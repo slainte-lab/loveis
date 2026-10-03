@@ -85,7 +85,7 @@ label{display:block;margin:10px 0 4px}
 </head>
 <body>
 <div class="dot" id="dot"></div>
-<div style="position:fixed;left:8px;bottom:4px;font-size:11px;opacity:.4;z-index:9">v3 · связь: <span id="ver">…</span></div>
+<div style="position:fixed;left:8px;bottom:4px;font-size:11px;opacity:.4;z-index:9">v4 · связь: <span id="ver">…</span></div>
 <div id="main"></div>
 <div id="adm"></div>
 <script>
@@ -103,6 +103,7 @@ const QS=[
 const ANSWER_SEC=300, GUESS_SEC=300;
 const BROKERS=['wss://broker.emqx.io:8084/mqtt','wss://broker.hivemq.com:8884/mqtt','wss://test.mosquitto.org:8081/mqtt'];
 const NS='loveis-pg1';
+const FIREBASE_URL=(new URLSearchParams(location.search).get('fb')||'').replace(/\/$/,'');   // https://<проект>-default-rtdb.<регион>.firebasedatabase.app
 const PTS={yes:1,almost:.5,no:0};
 const STAMP={yes:'ВЕРНО!',almost:'ПОЧТИ!',no:'НЕТ!'};
 
@@ -124,20 +125,43 @@ const heart='<span class="heart">♥</span>';
 let base='', netH=null, offset=0, isHost=false;
 const links=[];   // подключения ко всем брокерам сразу
 function connectAll(){
-  BROKERS.forEach(url=>{
+  (params.get('nomqtt')?[]:BROKERS).forEach(url=>{
     const rec={url,ok:false,up:0,err:'',n:0};
     links.push(rec);
     const c=rec.c=mqtt.connect(url,{clientId:'lv_'+Math.random().toString(16).slice(2,10),reconnectPeriod:2000,connectTimeout:8000,clean:true});
     c.on('connect',()=>{rec.ok=true;rec.up++;setDot();netH.onConnect(rec)});
     c.on('error',e=>{rec.err=String(e&&e.message||e).slice(0,60)});
     c.on('close',()=>{rec.ok=false;setDot();if(!S)render()});
+    rec.sub=t=>c.subscribe(base+'/'+t,{qos:1});
+    rec.pub=(t,m,o)=>c.publish(base+'/'+t,m,o);
     c.on('message',(t,p,pk)=>{rec.n++;try{netH.onMessage(JSON.parse(p.toString()),pk.retain)}catch(e){console.warn(e)}});
   });
+  if(FIREBASE_URL)connectFb();
+}
+function connectFb(){
+  const rec={url:FIREBASE_URL,name:'firebase',ok:false,up:0,err:'',n:0,es:{}};
+  links.push(rec);
+  const u=t=>FIREBASE_URL+'/'+base+'/'+t+'.json';
+  rec.pub=(t,m)=>fetch(u(t),{method:t==='state'?'PUT':'POST',body:m}).catch(e=>{rec.err=String(e&&e.message||e).slice(0,50)});
+  rec.sub=t=>{
+    if(rec.es[t])return;
+    const es=rec.es[t]=new EventSource(u(t));let first=true;
+    es.onopen=()=>{rec.ok=true;rec.up++;setDot();netH.onConnect(rec)};
+    es.onerror=()=>{rec.ok=false;rec.err='нет потока';setDot();if(!S)render()};
+    es.addEventListener('put',ev=>{
+      let d;try{d=JSON.parse(ev.data)}catch{return}
+      if(!d||d.data==null)return;rec.err='';
+      const items=t==='up'&&d.path==='/'?Object.values(d.data):[d.data];
+      for(const m of items){rec.n++;try{netH.onMessage(m,first)}catch(e){console.warn(e)}}
+      first=false;
+    });
+  };
+  rec.sub(isHost?'up':'state');
 }
 const anyOk=()=>links.some(l=>l.ok);
-const diagH=()=>'<div class="muted" style="font-size:13px;margin-top:10px;text-align:left">'+links.map(l=>(l.ok?'✓ ':'✗ ')+l.url.split('//')[1].split(':')[0]+' · входов '+l.up+' · сообщений '+l.n+(l.err?' · '+esc(l.err):'')).join('<br>')+'</div>';
+const diagH=()=>'<div class="muted" style="font-size:13px;margin-top:10px;text-align:left">'+links.map(l=>(l.ok?'✓ ':'✗ ')+(l.name||l.url.split('//')[1].split(':')[0])+' · входов '+l.up+' · сообщений '+l.n+(l.err?' · '+esc(l.err):'')).join('<br>')+'</div>';
 function setDot(){$('#dot').classList.toggle('on',anyOk());$('#ver').textContent=links.filter(l=>l.ok).length+'/'+links.length}
-function pubAll(t,o,opt){const m=JSON.stringify(o);links.forEach(l=>l.ok&&l.c.publish(base+'/'+t,m,opt))}
+function pubAll(t,o,opt){const m=JSON.stringify(o);links.forEach(l=>l.ok&&l.pub(t,m,opt))}
 const pubRet=(t,o)=>pubAll(t,o,{qos:1,retain:true});
 
 /* ====================== ХОСТ (большой экран, хранит всю правду) ====================== */
@@ -285,10 +309,10 @@ function startHost(resume){
   S=pub();
   const seen=new Set();
   netH={
-    onConnect(l){l.c.subscribe(base+'/up',{qos:1});pubRet('state',S);render()},
+    onConnect(l){l.sub('up');pubRet('state',S);render()},
     onMessage(m){if(m.id){if(seen.has(m.id))return;seen.add(m.id)}hostIn(m)}
   };
-  connectAll();
+  if(FIREBASE_URL)fetch(FIREBASE_URL+'/'+base+'/up.json',{method:'DELETE'}).catch(()=>{}).finally(connectAll);else connectAll();
   commit();
   if(H.phase==='reveal')revSched();
   setInterval(()=>{
@@ -312,7 +336,7 @@ function startPlay(code){
   joined=LS.get('j_'+code)==='1';
   netH={
     onConnect(l){
-      l.c.subscribe(base+'/state',{qos:1});
+      l.sub('state');
       send({t:joined?'join':'hello',n:ME.name,pin:ME.pin});
     },
     onMessage(m,ret){
@@ -356,8 +380,8 @@ document.addEventListener('click',e=>{
     case 'done':sendDone(true);break;
     case 'edit':send({t:'ready',ph:S.phase,val:false});break;
     case 'join':doJoin();break;
-    case 'home-host':{const saved=LS.get('host');
-      if(saved&&confirm('Продолжить прошлую игру? (Отмена — начать новую)'))startHost(true);else startHost(false);break}
+    case 'home-resume':startHost(true);break;
+    case 'home-host':startHost(false);break;
     case 'home-join':{const c=($('#hc').value||'').trim().toUpperCase();if(c.length===4)location.search='?r='+c+(U?'&u='+U:'');break}
   }
 });
@@ -411,13 +435,14 @@ function render(){
   renderAdm();tickTimers();
 }
 function homeView(){
-  const saved=LS.get('host');
+  const saved=LS.get('host');let savedCode='';try{savedCode=JSON.parse(saved).code}catch{}
   return {key:'home',html:`<div class="wrap">${logoH}<div class="sub">Кто лучше знает свою половинку</div>
    <div class="card pink"><h2>Я гость</h2><label>Код комнаты с экрана</label>
    <input type="text" id="hc" maxlength="4" autocapitalize="characters" placeholder="ABCD" style="text-transform:uppercase;text-align:center;font-size:30px;letter-spacing:6px">
    <button class="btn" data-a="home-join">Войти</button></div>
    <div class="card mint"><h2>Я ведущий</h2><div class="muted">Откройте эту страницу на ноутбуке, подключённом к большому экрану.</div>
-   <button class="btn white" data-a="home-host">Создать игру</button></div></div>`};
+   ${saved?`<button class="btn" data-a="home-resume">Продолжить игру ${esc(savedCode)}</button>`:''}
+   <button class="btn white" data-a="home-host">${saved?'Начать новую игру':'Создать игру'}</button></div></div>`};
 }
 
 /* ---------- общие куски ---------- */
@@ -474,7 +499,7 @@ function renderAdm(){
 /* ---------- большой экран ---------- */
 function screenView(){
   const st=S,ph=st.phase,pn=id=>esc(st.players[id].n);
-  const url=location.origin+location.pathname+'?r='+st.code+(U?'&u='+U:'');
+  const url=location.origin+location.pathname+'?r='+st.code+(U?'&u='+U:'')+(FIREBASE_URL?'&fb='+encodeURIComponent(FIREBASE_URL):'');
   if(ph==='lobby')return {key:'L'+st.v+'|'+url,html:`<div class="screen">${logoH}<div class="sub big">Заходи с телефона: отсканируй QR или введи код</div>
     <div class="lob"><div><div class="qrbox" id="qr"></div><div class="code">${st.code}</div>
     ${st.order.some(id=>st.players[id].adm)?'':`<div class="card mus center big" style="margin-top:14px">Ведущему: PIN <b style="font-size:34px;letter-spacing:4px">${esc(H.pin)}</b><div class="muted" style="font-size:15px">на телефоне: «я ведущий» → PIN</div></div>`}

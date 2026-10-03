@@ -115,7 +115,7 @@ label{display:block;margin:10px 0 4px}
 </head>
 <body>
 <div class="dot" id="dot"></div>
-<div style="position:fixed;left:8px;bottom:4px;font-size:11px;opacity:.4;z-index:9">v10 · связь: <span id="ver">…</span></div>
+<div style="position:fixed;left:8px;bottom:4px;font-size:11px;opacity:.4;z-index:9">v13 · связь: <span id="ver">…</span></div>
 <div id="main"></div>
 <div id="adm"></div>
 <div id="rx"></div>
@@ -202,7 +202,7 @@ const pubRet=(t,o)=>pubAll(t,o,{qos:1,retain:true});
 let H=null, S=null, T=null;
 function newHost(){
   return {code:genCode(),pin:String(1000+rnd(9000)),phase:'lobby',v:0,players:{},order:[],pairs:[],A:{},G:{},
-          deadline:0,seq:[],verd:[],rvi:0,step:0,res:null,qs:QS,jki:[],bonus:{},dseq:[],dq:0,dstep:0,dvotes:{},dres:null};
+          deadline:0,seq:[],verd:[],rvi:0,step:0,res:null,qs:QS,kicked:{},jki:[],bonus:{},dseq:[],dq:0,dstep:0,dvotes:{},dres:null};
 }
 function pairOfH(pid){return H.pairs.find(p=>p.a===pid||p.b===pid)}
 function partnerH(pid){const p=pairOfH(pid);return p&&(p.a===pid?p.b:p.a)}
@@ -220,7 +220,7 @@ function pub(){
   const pl={};
   for(const id of H.order){const p=H.players[id];pl[id]={n:p.n,d:!!p.d,adm:!!p.adm}}
   const sc=scoresH();
-  const st={v:H.v,code:H.code,phase:H.phase,now:Date.now(),deadline:H.deadline,players:pl,order:H.order,pairs:H.pairs,qs:H.qs,
+  const st={v:H.v,code:H.code,phase:H.phase,now:Date.now(),deadline:H.deadline,players:pl,order:H.order,pairs:H.pairs,qs:H.qs,kicked:Object.keys(H.kicked||{}),
     sc:H.pairs.map(p=>({id:p.id,n:p.n,pts:sc[p.id]})).sort((a,b)=>b.pts-a.pts)};
   if(H.phase==='duel'){
     const it=H.dseq[H.dq],pr=H.pairs.find(p=>p.id===it.pr);
@@ -336,6 +336,7 @@ function hostIn(m){
   const id=m.pid,p=H.players[id];
   switch(m.t){
     case 'join':
+      if(H.kicked&&H.kicked[id])return;
       if(!p){if(H.phase!=='lobby')return;H.players[id]={n:cleanName(m.n),d:false};H.order.push(id)}
       else if(H.phase==='lobby'&&m.n)p.n=cleanName(m.n);
       if(m.pin&&m.pin===H.pin)H.players[id].adm=true;
@@ -374,9 +375,9 @@ function hostAdm(m){
       const n=cleanName(m.n&&m.n.trim()?m.n:H.players[m.a].n+' & '+H.players[m.b].n).slice(0,28);
       H.pairs.push({id:'p'+Date.now().toString(36)+rnd(99),n,a:m.a,b:m.b});commit();break}
     case 'unpair':if(!L)return;H.pairs=H.pairs.filter(p=>p.id!==m.id);commit();break;
-    case 'kick':if(!L||!H.players[m.pid])return;
-      H.pairs=H.pairs.filter(p=>p.a!==m.pid&&p.b!==m.pid);delete H.players[m.pid];
-      H.order=H.order.filter(x=>x!==m.pid);commit();break;
+    case 'kick':if(!L||!H.players[m.tp])return;
+      H.pairs=H.pairs.filter(p=>p.a!==m.tp&&p.b!==m.tp);delete H.players[m.tp];
+      H.order=H.order.filter(x=>x!==m.tp);(H.kicked=H.kicked||{})[m.tp]=true;commit();break;
     case 'start':
       if(L&&H.pairs.length&&H.order.every(pairOfH))setPhase('answer');break;
     case 'plus':
@@ -434,9 +435,9 @@ function startPlay(code){
     },
     onMessage(m,ret){
       if(S&&m.v<S.v)return;
-      m.players=m.players||{};m.order=m.order||[];m.pairs=m.pairs||[];m.qs=m.qs||QS;
+      m.players=m.players||{};m.kicked=m.kicked||[];m.order=m.order||[];m.pairs=m.pairs||[];m.qs=m.qs||QS;
       S=m;if(!ret)offset=m.now-Date.now();
-      if(joined&&!S.players[ME.pid]&&S.phase==='lobby')send({t:'join',n:ME.name,pin:ME.pin});
+      if(joined&&!S.players[ME.pid]&&S.phase==='lobby'&&!S.kicked.includes(ME.pid))send({t:'join',n:ME.name,pin:ME.pin});
       render();
     }
   };
@@ -463,7 +464,7 @@ document.addEventListener('click',e=>{
     case 'sel':{const id=b.dataset.pid,i=sel.indexOf(id);if(i>=0)sel.splice(i,1);else{sel.push(id);if(sel.length>2)sel.shift()}render();break}
     case 'pair':{if(sel.length!==2)return;const n=prompt('Название пары (можно оставить пустым)','');if(n===null)return;
       act('pair',{a:sel[0],b:sel[1],n});sel=[];break}
-    case 'kick':{if(!sel.length)return;if(confirm('Удалить выбранных из игры?')){sel.forEach(pid=>act('kick',{pid}));sel=[]}break}
+    case 'kick1':{act('kick',{tp:b.dataset.pid});sel=sel.filter(x=>x!==b.dataset.pid);render();break}
     case 'unpair':act('unpair',{id:b.dataset.id});break;
     case 'start':act('start');break;
     case 'plus':case 'force':case 'next':case 'skipq':case 'again':act(a);break;
@@ -563,7 +564,8 @@ function admHTML(){
     const free=st.order.filter(id=>!pairOf(st,id));
     h+=`<b>Без пары:</b><div>${free.map(id=>`<button class="chip ${sel.includes(id)?'sel':''}" data-a="sel" data-pid="${id}">${esc(st.players[id].n)}</button>`).join('')||'<span class="muted">никого</span>'}</div>
     <button class="btn sm pink" data-a="pair" ${sel.length===2?'':'disabled'}>♥ Объединить</button>
-    <button class="btn sm white" data-a="kick" ${sel.length?'':'disabled'}>Удалить</button>`;
+`;
+    h+=`<div class="hr"></div><b>Все игроки (✕ — удалить):</b><div>${st.order.map(id=>`<span class="chip">${esc(st.players[id].n)} <button data-a="kick1" data-pid="${id}" style="border:0;background:none;font-size:20px;padding:0 0 0 4px;cursor:pointer">✕</button></span>`).join('')||'<span class="muted">никого</span>'}</div>`;
     if(st.pairs.length)h+=`<div class="hr"></div><b>Пары:</b>`+st.pairs.map(p=>`<div>${esc(p.n)} <button class="chip" style="padding:0 10px" data-a="unpair" data-id="${p.id}">✕</button></div>`).join('');
     h+=`<button class="btn" data-a="start" ${canStart(st)?'':'disabled'}>Старт игры ▶</button>`;
     if(!canStart(st))h+=`<div class="muted">Старт появится, когда все игроки будут в парах.</div>`;
@@ -661,6 +663,7 @@ function playView(){
   const st=S,me=st.players[ME.pid],ph=st.phase;
   const wrap=h=>`<div class="wrap">${logoH}${h}</div>`;
   if(!me){
+    if(S.kicked.includes(ME.pid))return {key:'kicked',html:wrap('<div class="card pink center"><h2>Тебя удалили из игры</h2><div class="muted">Если это ошибка, скажи ведущему.</div></div>')};
     if(ph!=='lobby')return {key:'late',html:wrap('<div class="card pink center">Игра уже идёт. Смотри на большой экран! '+heart+'</div>')};
     if(joined&&Date.now()-joinTried<4000)setTimeout(render,4200);
     if(joined&&LS.get('j_'+st.code)==='1'&&ME.name)return {key:'joining',html:wrap('<div class="sub">Заходим<span class="dots"><span>.</span><span>.</span><span>.</span></span></div>')};

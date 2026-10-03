@@ -85,7 +85,7 @@ label{display:block;margin:10px 0 4px}
 </head>
 <body>
 <div class="dot" id="dot"></div>
-<div style="position:fixed;left:8px;bottom:4px;font-size:11px;opacity:.4;z-index:9">v6 · связь: <span id="ver">…</span></div>
+<div style="position:fixed;left:8px;bottom:4px;font-size:11px;opacity:.4;z-index:9">v7 · связь: <span id="ver">…</span></div>
 <div id="main"></div>
 <div id="adm"></div>
 <script>
@@ -93,14 +93,14 @@ label{display:block;margin:10px 0 4px}
 /* ====================== НАСТРОЙКИ ====================== */
 const QS=[
  'Какое блюдо ты закажешь на «последний ужин» в жизни?',
- 'Какой фильм или сериал ты готов(а) пересматривать бесконечно?',
- 'Что ты купишь первым, если внезапно получишь миллион (кроме недвижимости)?',
- 'Какая мелочь в совместном быту раздражает тебя сильнее всего?',
- 'Какое первое слово пришло тебе в голову при знакомстве с партнёром?',
- 'Как выглядит твой идеальный выходной? Три слова.',
- 'Чем ты занимаешься, когда остаёшься один(одна) дома, и в чём не признаешься вслух?'
+ 'Какой фильм или сериал ты можешь пересматривать бесконечно?',
+ 'На что ты потратишь первый миллион (кроме недвижимости)?',
+ 'Что в быту раздражает тебя сильнее всего?',
+ 'Какая твоя самая бесполезная покупка за последний год?',
+ 'Какую песню ты включаешь, чтобы поднять себе настроение?',
+ 'В какую страну ты полетишь завтра, если билет бесплатный?'
 ];
-const ANSWER_SEC=300, GUESS_SEC=300;
+const ANSWER_SEC=300, GUESS_ITEM_SEC=45;
 const BROKERS=['wss://broker.emqx.io:8084/mqtt','wss://broker.hivemq.com:8884/mqtt','wss://test.mosquitto.org:8081/mqtt'];
 const NS='loveis-pg1';
 const FIREBASE_URL=(new URLSearchParams(location.search).get('fb')||'https://slainte-33638-default-rtdb.europe-west1.firebasedatabase.app').replace(/\/$/,'');   // https://<проект>-default-rtdb.<регион>.firebasedatabase.app
@@ -201,13 +201,12 @@ function clearT(){clearTimeout(T);T=null}
 function setPhase(p){
   clearT();H.phase=p;
   for(const id of H.order)H.players[id].d=false;
-  if(p==='answer'||p==='guess'){
-    H.deadline=Date.now()+(p==='answer'?ANSWER_SEC:GUESS_SEC)*1000;
-    const bag=p==='answer'?H.A:H.G;
-    for(const id of H.order)if(!bag[id])bag[id]=H.qs.map(()=>'');
+  if(p==='answer'){
+    H.deadline=Date.now()+ANSWER_SEC*1000;
+    for(const id of H.order)if(!H.A[id])H.A[id]=H.qs.map(()=>'');
   }
   if(p==='reveal'){
-    H.seq=[];H.verd=[];H.rvi=0;H.step=0;
+    H.seq=[];H.verd=[];H.G={};H.rvi=0;H.step=0;H.deadline=Date.now()+GUESS_ITEM_SEC*1000;
     for(const pr of shuffle(H.pairs.slice()))
       for(let q=0;q<H.qs.length;q++){
         H.seq.push({pr:pr.id,au:pr.a,gu:pr.b,q});
@@ -219,17 +218,16 @@ function setPhase(p){
   if(p==='reveal')revSched();
 }
 function calcRes(){
-  const sc=scoresH(),gp={},ap={},nos={};
-  H.order.forEach(id=>{gp[id]=0;ap[id]=0;nos[id]=0});
-  H.verd.forEach((v,i)=>{const it=H.seq[i];if(!it||!v)return;gp[it.gu]+=PTS[v];ap[it.au]+=PTS[v];if(v==='no')nos[it.au]++});
+  const sc=scoresH(),gp={},ap={};
+  H.order.forEach(id=>{gp[id]=0;ap[id]=0});
+  H.verd.forEach((v,i)=>{const it=H.seq[i];if(!it||!v)return;gp[it.gu]+=PTS[v];ap[it.au]+=PTS[v]});
   const max=H.qs.length*2;
   const board=H.pairs.map(p=>({id:p.id,n:p.n,pts:sc[p.id],max,pct:max?sc[p.id]/max:0})).sort((a,b)=>b.pts-a.pts);
   const pick=(o,dir)=>{const ids=H.order.slice().sort((x,y)=>dir*(o[y]-o[x]));return ids.length?{n:H.players[ids[0]].n,v:o[ids[0]]}:null};
   const noms=[
     {t:'Телепат вечера',i:'🔮',d:'Лучше всех угадывал(а) партнёра',w:pick(gp,1),u:'б.'},
     {t:'Мимо кассы',i:'🎯',d:'Меньше всех попал(а) в ответы',w:pick(gp,-1),u:'б.'},
-    {t:'Человек-загадка',i:'🕵️',d:'Его(её) ответы угадывали хуже всех',w:pick(ap,-1),u:'б.'},
-    {t:'Строгий судья',i:'⚖️',d:'Чаще всех ставил(а) «Нет»',w:pick(nos,1),u:'×'}
+    {t:'Человек-загадка',i:'🕵️',d:'Его(её) ответы угадывали хуже всех',w:pick(ap,-1),u:'б.'}
   ];
   return {board,noms};
 }
@@ -237,23 +235,23 @@ function calcRes(){
 function revSched(){
   clearT();
   if(H.phase!=='reveal')return;
-  if(H.step===0)T=setTimeout(()=>revStep(1),3500);
-  else if(H.step===1)T=setTimeout(()=>revStep(2),4500);
-  else if(H.step===3)T=setTimeout(revNext,4200);
+  if(H.step===0)T=setTimeout(()=>revStep(1),Math.max(1000,H.deadline-Date.now()));
+  else if(H.step===1)T=setTimeout(()=>revStep(2),3500);
+  else if(H.step===3)T=setTimeout(revNext,3500);
 }
 function revStep(s){H.step=s;commit();revSched()}
 function revNext(){
   if(H.rvi+1>=H.seq.length)return setPhase('results');
-  H.rvi++;H.step=0;commit();revSched();
+  H.rvi++;H.step=0;H.deadline=Date.now()+GUESS_ITEM_SEC*1000;commit();revSched();
 }
 function setVerdict(v){
   if(H.phase!=='reveal'||H.step!==2||H.verd[H.rvi]||!(v in PTS))return;
   H.verd[H.rvi]=v;H.step=3;commit();revSched();
 }
 function checkAdvance(){
-  if(H.phase!=='answer'&&H.phase!=='guess')return;
+  if(H.phase!=='answer')return;
   const all=H.order.length&&H.order.every(id=>H.players[id].d);
-  if(all||Date.now()>H.deadline+1500)setPhase(H.phase==='answer'?'guess':'reveal');
+  if(all||Date.now()>H.deadline+1500)setPhase('reveal');
 }
 /* --- входящие сообщения --- */
 const cleanName=n=>String(n||'').trim().slice(0,20)||'Гость';
@@ -269,11 +267,14 @@ function hostIn(m){
     case 'hello':pubRet('state',S);break;
     case 'ready':
       if(!p||m.ph!==H.phase)return;
-      if(Array.isArray(m.a))(H.phase==='answer'?H.A:H.G)[id]=H.qs.map((_,i)=>String(m.a[i]||'').slice(0,300));
+      if(Array.isArray(m.a))H.A[id]=H.qs.map((_,i)=>String(m.a[i]||'').slice(0,300));
       if(typeof m.val==='boolean'){p.d=m.val;commit();checkAdvance()}
       break;
-    case 'verdict':
-      if(p&&H.phase==='reveal'&&H.seq[H.rvi].au===id)setVerdict(m.v);break;
+    case 'guess':{
+      const it=H.seq[H.rvi];
+      if(p&&H.phase==='reveal'&&H.step===0&&m.i===H.rvi&&it.gu===id){
+        (H.G[id]=H.G[id]||[])[it.q]=String(m.text||'').slice(0,300);revStep(1)}
+      break}
     case 'adm':
       if(p&&p.adm&&m.pin===H.pin)hostAdm(m);break;
   }
@@ -291,8 +292,11 @@ function hostAdm(m){
       H.order=H.order.filter(x=>x!==m.pid);commit();break;
     case 'start':
       if(L&&H.pairs.length&&H.order.every(pairOfH))setPhase('answer');break;
-    case 'plus':if(H.phase==='answer'||H.phase==='guess'){H.deadline=Math.max(H.deadline,Date.now())+60000;commit()}break;
-    case 'force':if(H.phase==='answer')setPhase('guess');else if(H.phase==='guess')setPhase('reveal');break;
+    case 'plus':
+      if(H.phase==='answer'){H.deadline=Math.max(H.deadline,Date.now())+60000;commit()}
+      else if(H.phase==='reveal'&&H.step===0){H.deadline+=15000;commit();revSched()}
+      break;
+    case 'force':if(H.phase==='answer')setPhase('reveal');break;
     case 'next':
       if(H.phase!=='reveal')break;
       if(H.step<2)revStep(H.step+1);else if(H.step===3)revNext();break;
@@ -304,7 +308,7 @@ function hostAdm(m){
 }
 function startHost(resume){
   isHost=true;
-  if(resume){H=JSON.parse(LS.get('host'))}else{H=newHost();}
+  if(resume){H=JSON.parse(LS.get('host'));if(H.phase==='guess'){H.phase='answer';H.deadline=0}}else{H=newHost();}
   base=NS+'/'+H.code;
   S=pub();
   const seen=new Set();
@@ -318,7 +322,7 @@ function startHost(resume){
   setInterval(()=>{
     checkAdvance();
     S=pub();
-    if(H.phase==='answer'||H.phase==='guess')render();
+    if(H.phase==='answer')render();
     if(Math.floor(Date.now()/1000)%6===0)pubRet('state',S);
   },1000);
   document.addEventListener('keydown',e=>{
@@ -353,7 +357,7 @@ function startPlay(code){
 }
 
 /* ====================== ДЕЙСТВИЯ ====================== */
-let sel=[],admOpen=null;
+let sel=[],admOpen=null,guessSent=-1;
 function act(op,x){
   x=x||{};
   if(isHost)hostAdm(Object.assign({op},x));
@@ -375,7 +379,7 @@ document.addEventListener('click',e=>{
     case 'start':act('start');break;
     case 'plus':case 'force':case 'next':case 'skipq':case 'again':act(a);break;
     case 'verd':act('verd',{v:b.dataset.v});break;
-    case 'myverd':send({t:'verdict',v:b.dataset.v});break;
+    case 'sendguess':{const t=$('#gt');if(!t||!S.rv)return;send({t:'guess',i:S.rv.i,text:t.value});guessSent=S.rv.i;render();break}
     case 'admtoggle':admOpen=!(admOpen===null?(S&&S.phase==='lobby'):admOpen);render();break;
     case 'gear':admOpen=!admOpen;render();break;
     case 'done':sendDone(true);break;
@@ -452,10 +456,10 @@ function revealHTML(rv,big){
   let h=`<div class="pair-h">${esc(rv.pn)} <span class="muted" style="font-size:.7em">· ${rv.i+1}/${rv.total}</span></div>
    <div class="card peach"><div class="qn">Вопрос ${rv.q+1}</div><div class="${cls}">${esc(rv.qt)}</div>
    <div class="muted">Отвечает про себя: <b>${esc(rv.an)}</b></div></div>`;
-  if(rv.step===0)h+=`<div class="card center big"><b>${esc(rv.gn)}</b> угадывает<span class="dots"><span>.</span><span>.</span><span>.</span></span></div>`;
+  if(rv.step===0)h+=`<div class="card center big"><b>${esc(rv.gn)}</b>, что ответит ${esc(rv.an)}? Пишет догадку<span class="dots"><span>.</span><span>.</span><span>.</span></span><div class="timer">${timerH()}</div></div>`;
   if(rv.step>=1)h+=`<div class="card pink"><div class="muted">Догадка — ${esc(rv.gn)}:</div><div class="${big?'abig':'hand big'}">${esc(rv.guess)||'—'}</div></div>`;
   if(rv.step>=2)h+=`<div class="card mint"><div class="muted">Настоящий ответ — ${esc(rv.an)}:</div><div class="${big?'abig':'hand big'}">${esc(rv.ans)||'—'}</div></div>`;
-  if(rv.step===2)h+=`<div class="center muted">${esc(rv.an)}, оцени догадку<span class="dots"><span>.</span><span>.</span><span>.</span></span></div>`;
+  if(rv.step===2)h+=`<div class="center muted">Ведущий оценивает<span class="dots"><span>.</span><span>.</span><span>.</span></span></div>`;
   if(rv.step===3)h+=`<div class="center" style="margin:10px"><span class="stamp ${rv.verdict||'no'}">${STAMP[rv.verdict||'no']}</span></div>`;
   return h;
 }
@@ -470,14 +474,14 @@ function admHTML(){
     if(st.pairs.length)h+=`<div class="hr"></div><b>Пары:</b>`+st.pairs.map(p=>`<div>${esc(p.n)} <button class="chip" style="padding:0 10px" data-a="unpair" data-id="${p.id}">✕</button></div>`).join('');
     h+=`<button class="btn" data-a="start" ${canStart(st)?'':'disabled'}>Старт игры ▶</button>`;
     if(!canStart(st))h+=`<div class="muted">Старт появится, когда все игроки будут в парах.</div>`;
-  }else if(ph==='answer'||ph==='guess'){
+  }else if(ph==='answer'){
     const n=st.order.filter(id=>st.players[id].d).length;
     h+=`<div>Готовы: <b>${n}/${st.order.length}</b></div>
     <button class="btn sm" data-a="plus">+1 минута</button><button class="btn sm white" data-a="force">Дальше, не ждать ▶</button>`;
   }else if(ph==='reveal'){
     const rv=st.rv;
-    h+=`<button class="btn sm" data-a="next">Дальше ▶</button><button class="btn sm white" data-a="skipq">Пропустить</button>`;
-    if(rv.step===2)h+=`<div class="hr"></div><div class="muted">Решить за автора:</div><div class="verd">
+    h+=`<button class="btn sm" data-a="next">Дальше ▶</button><button class="btn sm white" data-a="skipq">Пропустить вопрос</button>${rv.step===0?'<button class="btn sm white" data-a="plus">+15 сек</button>':''}`;
+    if(rv.step===2)h+=`<div class="hr"></div><div class="muted">Оцени догадку:</div><div class="verd">
       <button class="btn mint" data-a="verd" data-v="yes">Верно</button><button class="btn" data-a="verd" data-v="almost">Почти</button><button class="btn red" data-a="verd" data-v="no">Нет</button></div>`;
   }else if(ph==='results'){
     h+=`<button class="btn" data-a="again">Играть снова</button>`;
@@ -508,8 +512,8 @@ function screenView(){
     <div><h2 style="font-size:40px">Уже в игре: ${st.order.length}</h2><div style="margin-top:10px">${st.order.map(id=>`<span class="chip pop ${st.players[id].adm?'adm':''}">${pn(id)}</span>`).join('')||'<span class="muted">ждём первых гостей…</span>'}</div>
     ${st.pairs.length?`<h2 style="font-size:34px;margin-top:24px">Пары</h2>`+st.pairs.map(p=>`<div class="card pink big" style="display:inline-block;margin:6px 12px 6px 0">${esc(p.n)}</div>`).join(''):''}</div></div></div>`,
     bind(){$('#qr').appendChild(qrFor(url))}};
-  if(ph==='answer'||ph==='guess'){
-    const t=ph==='answer'?'Часть 1 · Отвечаем про себя':'Часть 2 · Угадываем ответы партнёра';
+  if(ph==='answer'){
+    const t='Отвечаем про себя';
     const n=st.order.filter(id=>st.players[id].d).length;
     return {key:'A'+st.v+ph,html:`<div class="screen">${logoH}<h2 class="center" style="font-size:38px">${t}</h2>
      <div class="timer" style="font-size:96px">${timerH()}</div><div class="center big">Готовы: ${n} из ${st.order.length}</div>
@@ -551,7 +555,7 @@ function playView(){
   if(ph==='lobby')return {key:'l'+st.v+(pr?pr.id:''),html:wrap(`<div class="card mint center"><h2>Привет, ${esc(me.n)}!</h2>
     ${pr?`<div class="big">Твоя пара: <b>${esc(pr.n)}</b> ${heart}<br>Партнёр: ${esc(partner.n)}</div>`:'<div class="muted">Ждём, пока ведущий соберёт пары…</div>'}</div>
     <div class="card"><b>Уже в игре (${st.order.length}):</b><div>${st.order.map(id=>`<span class="chip">${esc(st.players[id].n)}</span>`).join('')}</div></div>`)};
-  if(ph==='answer'||ph==='guess'){
+  if(ph==='answer'){
     if(me.d){
       const n=st.order.filter(id=>st.players[id].d).length;
       return {key:'w'+st.v,html:wrap(`<div class="card mint center"><h2>Готово! ✓</h2><div class="timer">${timerH()}</div>
@@ -559,15 +563,23 @@ function playView(){
         <button class="btn white" data-a="edit">Изменить ответы</button>`)};
     }
     let draft=[];try{draft=JSON.parse(LS.get(draftKey(ph),'[]'))}catch{}
-    return {key:'f'+ph+me.d,html:wrap(`<div class="card pink center"><div class="muted">${ph==='answer'?'Отвечай про себя':'Что ответит '+esc(partner.n)+'?'}</div><div class="timer">${timerH()}</div></div>
+    return {key:'f'+ph+me.d,html:wrap(`<div class="card pink center"><div class="muted">Отвечай про себя. Партнёр потом будет угадывать!</div><div class="timer">${timerH()}</div></div>
       ${st.qs.map((q,i)=>`<div class="card"><div class="qn">${i+1}/${st.qs.length}</div><div class="q">${esc(q)}</div>
-        <textarea data-i="${i}" maxlength="300" placeholder="${ph==='answer'?'Твой ответ…':'Догадка про '+esc(partner.n)+'…'}">${esc(draft[i]||'')}</textarea></div>`).join('')}
+        <textarea data-i="${i}" maxlength="300" placeholder="Твой ответ…">${esc(draft[i]||'')}</textarea></div>`).join('')}
       <button class="btn" data-a="done">Готово ✓</button>`)};
   }
   if(ph==='reveal'){
-    const rv=st.rv,mine=rv.au===ME.pid&&rv.step===2&&!rv.verdict;
-    return {key:'r'+st.v,html:wrap(revealHTML(rv,false)+(mine?`<div class="card mus"><b>Была ли догадка верной?</b><div class="verd">
-      <button class="btn mint" data-a="myverd" data-v="yes">Верно</button><button class="btn" data-a="myverd" data-v="almost">Почти</button><button class="btn red" data-a="myverd" data-v="no">Нет</button></div></div>`:''))};
+    const rv=st.rv;
+    if(rv.step===0&&rv.gu===ME.pid){
+      if(guessSent===rv.i)return {key:'gs'+rv.i,html:wrap('<div class="card mint center"><h2>Отправлено ✓</h2><div class="muted">Смотри на большой экран</div></div>')};
+      return {key:'g'+rv.i,focus:'#gt',html:wrap(`<div class="card pink center"><div class="muted">Что ответит ${esc(rv.an)}?</div><div class="timer">${timerH()}</div></div>
+        <div class="card peach"><div class="qn">Вопрос ${rv.q+1}</div><div class="q">${esc(rv.qt)}</div></div>
+        <textarea id="gt" maxlength="300" placeholder="Твоя догадка про ${esc(rv.an)}…"></textarea>
+        <button class="btn" data-a="sendguess">Отправить ✓</button>`)};
+    }
+    const judge=me.adm&&rv.step===2&&!rv.verdict;
+    return {key:'r'+st.v,html:wrap(revealHTML(rv,false)+(judge?`<div class="card mus"><b>Оцени догадку:</b><div class="verd">
+      <button class="btn mint" data-a="verd" data-v="yes">Верно</button><button class="btn" data-a="verd" data-v="almost">Почти</button><button class="btn red" data-a="verd" data-v="no">Нет</button></div></div>`:''))};
   }
   if(ph==='results'){
     const r=st.res,i=r.board.findIndex(b=>pr&&b.id===pr.id),b=r.board[i];

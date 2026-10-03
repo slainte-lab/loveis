@@ -100,7 +100,7 @@ const QS=[
  'Чем ты занимаешься, когда остаёшься один(одна) дома, и в чём не признаешься вслух?'
 ];
 const ANSWER_SEC=300, GUESS_SEC=300;
-const BROKERS=['wss://broker.emqx.io:8084/mqtt','wss://broker.hivemq.com:8884/mqtt'];
+const BROKERS=['wss://broker.emqx.io:8084/mqtt','wss://broker.hivemq.com:8884/mqtt','wss://test.mosquitto.org:8081/mqtt'];
 const NS='loveis-pg1';
 const PTS={yes:1,almost:.5,no:0};
 const STAMP={yes:'ВЕРНО!',almost:'ПОЧТИ!',no:'НЕТ!'};
@@ -120,19 +120,22 @@ const fmtT=s=>{s=Math.max(0,s);return Math.floor(s/60)+':'+String(s%60).padStart
 const heart='<span class="heart">♥</span>';
 
 /* ====================== СЕТЬ (MQTT через публичный брокер) ====================== */
-let client=null, base='', curBroker=0, netH=null, offset=0, isHost=false;
-function connect(i,fixed){
-  curBroker=i;
-  let ever=false,fails=0;
-  const c=mqtt.connect(BROKERS[i],{clientId:'lv_'+Math.random().toString(16).slice(2,10),reconnectPeriod:2000,connectTimeout:6000,clean:true});
-  client=c;
-  c.on('connect',()=>{ever=true;fails=0;setDot(true);netH.onConnect()});
-  c.on('close',()=>{setDot(false);
-    if(!ever&&!fixed&&++fails>=2){c.end(true);connect((i+1)%BROKERS.length,false)}});
-  c.on('message',(t,p,pk)=>{try{netH.onMessage(JSON.parse(p.toString()),pk.retain)}catch(e){console.warn(e)}});
+let base='', netH=null, offset=0, isHost=false;
+const links=[];   // подключения ко всем брокерам сразу
+function connectAll(){
+  BROKERS.forEach(url=>{
+    const rec={url,ok:false};
+    links.push(rec);
+    const c=rec.c=mqtt.connect(url,{clientId:'lv_'+Math.random().toString(16).slice(2,10),reconnectPeriod:2000,connectTimeout:8000,clean:true});
+    c.on('connect',()=>{rec.ok=true;setDot();netH.onConnect(rec)});
+    c.on('close',()=>{rec.ok=false;setDot();render()});
+    c.on('message',(t,p,pk)=>{try{netH.onMessage(JSON.parse(p.toString()),pk.retain)}catch(e){console.warn(e)}});
+  });
 }
-function setDot(on){$('#dot').classList.toggle('on',!!on)}
-const pubRet=(t,o)=>client&&client.connected&&client.publish(base+'/'+t,JSON.stringify(o),{qos:1,retain:true});
+const anyOk=()=>links.some(l=>l.ok);
+function setDot(){$('#dot').classList.toggle('on',anyOk())}
+function pubAll(t,o,opt){const m=JSON.stringify(o);links.forEach(l=>l.ok&&l.c.publish(base+'/'+t,m,opt))}
+const pubRet=(t,o)=>pubAll(t,o,{qos:1,retain:true});
 
 /* ====================== ХОСТ (большой экран, хранит всю правду) ====================== */
 let H=null, S=null, T=null;
@@ -236,6 +239,7 @@ function hostIn(m){
       else if(H.phase==='lobby'&&m.n)p.n=cleanName(m.n);
       if(m.pin&&m.pin===H.pin)H.players[id].adm=true;
       commit();break;
+    case 'hello':pubRet('state',S);break;
     case 'ready':
       if(!p||m.ph!==H.phase)return;
       if(Array.isArray(m.a))(H.phase==='answer'?H.A:H.G)[id]=H.qs.map((_,i)=>String(m.a[i]||'').slice(0,300));
@@ -276,11 +280,12 @@ function startHost(resume){
   if(resume){H=JSON.parse(LS.get('host'))}else{H=newHost();}
   base=NS+'/'+H.code;
   S=pub();
+  const seen=new Set();
   netH={
-    onConnect(){client.subscribe(base+'/up',{qos:1});pubRet('state',S);render()},
-    onMessage:m=>hostIn(m)
+    onConnect(l){l.c.subscribe(base+'/up',{qos:1});pubRet('state',S);render()},
+    onMessage(m){if(m.id){if(seen.has(m.id))return;seen.add(m.id)}hostIn(m)}
   };
-  connect(0,false);
+  connectAll();
   commit();
   if(H.phase==='reveal')revSched();
   setInterval(()=>{
@@ -298,23 +303,25 @@ function startHost(resume){
 const ME={pid:LS.get('pid',''),name:LS.get('name',''),pin:LS.get('pin','')};
 if(!ME.pid){ME.pid='u'+Math.random().toString(36).slice(2,10);LS.set('pid',ME.pid)}
 let joined=false,joinTried=0,roomNF=false;
-function send(m){if(client&&client.connected)client.publish(base+'/up',JSON.stringify(Object.assign({pid:ME.pid},m)),{qos:1})}
-function startPlay(code,b){
+function send(m){pubAll('up',Object.assign({pid:ME.pid,id:Math.random().toString(36).slice(2)},m),{qos:1})}
+function startPlay(code){
   base=NS+'/'+code;
   joined=LS.get('j_'+code)==='1';
   netH={
-    onConnect(){
-      client.subscribe(base+'/state',{qos:1});
-      if(joined)send({t:'join',n:ME.name,pin:ME.pin});
-      setTimeout(()=>{if(!S){roomNF=true;render()}},7000);
+    onConnect(l){
+      l.c.subscribe(base+'/state',{qos:1});
+      send({t:joined?'join':'hello',n:ME.name,pin:ME.pin});
     },
     onMessage(m,ret){
+      if(S&&m.v<S.v)return;
       S=m;if(!ret)offset=m.now-Date.now();
       if(joined&&!S.players[ME.pid]&&S.phase==='lobby')send({t:'join',n:ME.name,pin:ME.pin});
       render();
     }
   };
-  connect(b!=null?b:0,b!=null);
+  connectAll();
+  setInterval(()=>{if(!S)send({t:'hello'})},3000);
+  setTimeout(()=>{if(!S){roomNF=true;render()}},8000);
 }
 
 /* ====================== ДЕЙСТВИЯ ====================== */
@@ -390,7 +397,7 @@ setInterval(tickTimers,300);
 function render(){
   let v;
   if(!isHost&&!params.get('r'))v=homeView();
-  else if(!S)v={key:'wait',html:roomNF?'<div class="wrap">'+logoH+'<div class="card pink center">Комната не найдена.<br>Проверь код или попроси ведущего открыть большой экран.</div></div>'
+  else if(!S)v={key:'wait',html:roomNF?'<div class="wrap">'+logoH+'<div class="card pink center">'+(anyOk()?'Комната не найдена.<br>Проверь код: ведущий должен открыть большой экран.':'Нет связи с сервером сообщений.<br>Попробуй сменить сеть (Wi-Fi ↔ мобильный интернет) и обнови страницу.')+'<div class="muted" style="font-size:14px;margin-top:8px">'+links.map(l=>(l.ok?'✓ ':'✗ ')+l.url.split('//')[1].split(':')[0]).join('<br>')+'</div></div></div>'
       :'<div class="wrap">'+logoH+'<div class="sub">Подключаемся<span class="dots"><span>.</span><span>.</span><span>.</span></span></div></div>'};
   else v=isHost?screenView():playView();
   if(v.key!==lastKey){
@@ -464,7 +471,7 @@ function renderAdm(){
 /* ---------- большой экран ---------- */
 function screenView(){
   const st=S,ph=st.phase,pn=id=>esc(st.players[id].n);
-  const url=location.origin+location.pathname+'?r='+st.code+'&b='+curBroker+(U?'&u='+U:'');
+  const url=location.origin+location.pathname+'?r='+st.code+(U?'&u='+U:'');
   if(ph==='lobby')return {key:'L'+st.v+'|'+url,html:`<div class="screen">${logoH}<div class="sub big">Заходи с телефона: отсканируй QR или введи код</div>
     <div class="lob"><div><div class="qrbox" id="qr"></div><div class="code">${st.code}</div>
     ${st.order.some(id=>st.players[id].adm)?'':`<div class="card mus center big" style="margin-top:14px">Ведущему: PIN <b style="font-size:34px;letter-spacing:4px">${esc(H.pin)}</b><div class="muted" style="font-size:15px">на телефоне: «я ведущий» → PIN</div></div>`}
@@ -542,10 +549,7 @@ function playView(){
 
 /* ====================== СТАРТ ====================== */
 render();
-if(params.get('r')){
-  const b=params.get('b');
-  startPlay(params.get('r').toUpperCase(),b==null?null:+b);
-}
+if(params.get('r'))startPlay(params.get('r').toUpperCase());
 </script>
 </body>
 </html>

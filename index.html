@@ -125,15 +125,17 @@ let base='', netH=null, offset=0, isHost=false;
 const links=[];   // подключения ко всем брокерам сразу
 function connectAll(){
   BROKERS.forEach(url=>{
-    const rec={url,ok:false};
+    const rec={url,ok:false,up:0,err:'',n:0};
     links.push(rec);
     const c=rec.c=mqtt.connect(url,{clientId:'lv_'+Math.random().toString(16).slice(2,10),reconnectPeriod:2000,connectTimeout:8000,clean:true});
-    c.on('connect',()=>{rec.ok=true;setDot();netH.onConnect(rec)});
-    c.on('close',()=>{rec.ok=false;setDot();render()});
-    c.on('message',(t,p,pk)=>{try{netH.onMessage(JSON.parse(p.toString()),pk.retain)}catch(e){console.warn(e)}});
+    c.on('connect',()=>{rec.ok=true;rec.up++;setDot();netH.onConnect(rec)});
+    c.on('error',e=>{rec.err=String(e&&e.message||e).slice(0,60)});
+    c.on('close',()=>{rec.ok=false;setDot();if(!S)render()});
+    c.on('message',(t,p,pk)=>{rec.n++;try{netH.onMessage(JSON.parse(p.toString()),pk.retain)}catch(e){console.warn(e)}});
   });
 }
 const anyOk=()=>links.some(l=>l.ok);
+const diagH=()=>'<div class="muted" style="font-size:13px;margin-top:10px;text-align:left">'+links.map(l=>(l.ok?'✓ ':'✗ ')+l.url.split('//')[1].split(':')[0]+' · входов '+l.up+' · сообщений '+l.n+(l.err?' · '+esc(l.err):'')).join('<br>')+'</div>';
 function setDot(){$('#dot').classList.toggle('on',anyOk());$('#ver').textContent=links.filter(l=>l.ok).length+'/'+links.length}
 function pubAll(t,o,opt){const m=JSON.stringify(o);links.forEach(l=>l.ok&&l.c.publish(base+'/'+t,m,opt))}
 const pubRet=(t,o)=>pubAll(t,o,{qos:1,retain:true});
@@ -398,8 +400,8 @@ setInterval(tickTimers,300);
 function render(){
   let v;
   if(!isHost&&!params.get('r'))v=homeView();
-  else if(!S)v={key:'wait',html:roomNF?'<div class="wrap">'+logoH+'<div class="card pink center">'+(anyOk()?'Комната не найдена.<br>Проверь код: ведущий должен открыть большой экран.':'Нет связи с сервером сообщений.<br>Попробуй сменить сеть (Wi-Fi ↔ мобильный интернет) и обнови страницу.')+'<div class="muted" style="font-size:14px;margin-top:8px">'+links.map(l=>(l.ok?'✓ ':'✗ ')+l.url.split('//')[1].split(':')[0]).join('<br>')+'</div></div></div>'
-      :'<div class="wrap">'+logoH+'<div class="sub">Подключаемся<span class="dots"><span>.</span><span>.</span><span>.</span></span></div></div>'};
+  else if(!S)v={key:'wait'+links.map(l=>(l.ok?1:0)+':'+l.up+':'+l.n+l.err).join(),html:roomNF?'<div class="wrap">'+logoH+'<div class="card pink center">'+(anyOk()?'Комната не найдена.<br>Проверь код: ведущий должен открыть большой экран.':'Нет связи с сервером сообщений.<br>Попробуй сменить сеть (Wi-Fi ↔ мобильный интернет) и обнови страницу.')+''+diagH()+'</div></div>'
+      :'<div class="wrap">'+logoH+'<div class="sub">Подключаемся<span class="dots"><span>.</span><span>.</span><span>.</span></span></div>'+diagH()+'</div>'};
   else v=isHost?screenView():playView();
   if(v.key!==lastKey){
     $('#main').innerHTML=v.html;lastKey=v.key;

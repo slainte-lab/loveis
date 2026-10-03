@@ -466,7 +466,9 @@ function screenView(){
   const st=S,ph=st.phase,pn=id=>esc(st.players[id].n);
   const url=location.origin+location.pathname+'?r='+st.code+'&b='+curBroker+(U?'&u='+U:'');
   if(ph==='lobby')return {key:'L'+st.v+'|'+url,html:`<div class="screen">${logoH}<div class="sub big">Заходи с телефона: отсканируй QR или введи код</div>
-    <div class="lob"><div><div class="qrbox" id="qr"></div><div class="code">${st.code}</div></div>
+    <div class="lob"><div><div class="qrbox" id="qr"></div><div class="code">${st.code}</div>
+    ${st.order.some(id=>st.players[id].adm)?'':`<div class="card mus center big" style="margin-top:14px">Ведущему: PIN <b style="font-size:34px;letter-spacing:4px">${esc(H.pin)}</b><div class="muted" style="font-size:15px">на телефоне: «я ведущий» → PIN</div></div>`}
+    <div class="muted" style="font-size:13px;max-width:340px;word-break:break-all;margin-top:10px">${esc(url)}</div></div>
     <div><h2 style="font-size:40px">Уже в игре: ${st.order.length}</h2><div style="margin-top:10px">${st.order.map(id=>`<span class="chip pop ${st.players[id].adm?'adm':''}">${pn(id)}</span>`).join('')||'<span class="muted">ждём первых гостей…</span>'}</div>
     ${st.pairs.length?`<h2 style="font-size:34px;margin-top:24px">Пары</h2>`+st.pairs.map(p=>`<div class="card pink big" style="display:inline-block;margin:6px 12px 6px 0">${esc(p.n)}</div>`).join(''):''}</div></div></div>`,
     bind(){$('#qr').appendChild(qrFor(url))}};

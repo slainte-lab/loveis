@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Love is… Игра для пар</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Marck+Script&family=Pangolin&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+:root{--bg:#fff3e2;--pink:#f9c6c9;--peach:#ffd9b8;--mint:#c9ecd9;--mus:#f3c34b;--ink:#222;--red:#e0475b;--green:#2e9e6a;--card:#fffaf2}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{background:var(--bg);color:var(--ink);font-family:'Pangolin','Comic Sans MS',sans-serif;font-size:18px;
+ background-image:radial-gradient(#f0d9bd 1.2px,transparent 1.2px);background-size:22px 22px;-webkit-tap-highlight-color:transparent}
+h1,h2,h3,.hand{font-family:'Marck Script','Pangolin',cursive;font-weight:400;margin:0}
+button{font:inherit;color:inherit;cursor:pointer}
+.wrap{max-width:560px;margin:0 auto;padding:14px 16px 90px}
+.card{background:var(--card);border:3px solid var(--ink);border-radius:18px;padding:14px 16px;margin:12px 0;box-shadow:4px 4px 0 var(--ink)}
+.card.pink{background:var(--pink)}.card.mint{background:var(--mint)}.card.peach{background:var(--peach)}.card.mus{background:var(--mus)}
+.logo{font-family:'Marck Script';font-size:44px;line-height:1;text-align:center;margin:8px 0 4px}
+.logo b{color:var(--red);font-weight:400}
+.sub{text-align:center;opacity:.75;margin-bottom:10px}
+.btn{display:block;width:100%;border:3px solid var(--ink);border-radius:16px;background:var(--mus);padding:14px 16px;font-size:20px;box-shadow:3px 3px 0 var(--ink);margin:10px 0;text-align:center}
+.btn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--ink)}
+.btn.pink{background:var(--pink)}.btn.mint{background:var(--mint)}.btn.white{background:#fff}.btn.red{background:#f7a3ad}
+.btn[disabled]{opacity:.4;pointer-events:none}
+.btn.sm{display:inline-block;width:auto;padding:8px 14px;font-size:16px;margin:4px 4px 4px 0}
+input[type=text],input[type=tel],textarea{width:100%;border:3px solid var(--ink);border-radius:14px;padding:12px 14px;font:inherit;font-size:19px;background:#fff;outline:none}
+textarea{resize:vertical;min-height:70px}
+label{display:block;margin:10px 0 4px}
+.chip{display:inline-flex;align-items:center;gap:6px;border:3px solid var(--ink);border-radius:999px;padding:6px 14px;margin:4px 6px 4px 0;background:#fff;font-size:18px}
+.chip.sel{background:var(--mus)}.chip.ok{background:var(--mint)}.chip.adm{border-style:dashed}
+.chip.pop{animation:pop .4s ease}
+@keyframes pop{0%{transform:scale(.3) rotate(-8deg);opacity:0}70%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
+.timer{font-family:'Marck Script';font-size:40px;text-align:center}
+.timer.low{color:var(--red)}
+.q{font-size:21px;margin:2px 0 8px}
+.qn{font-family:'Marck Script';font-size:22px;color:var(--red)}
+.dot{position:fixed;top:8px;right:10px;width:12px;height:12px;border-radius:50%;border:2px solid var(--ink);background:#bbb;z-index:9}
+.dot.on{background:#4cd08a}
+.stamp{display:inline-block;font-family:'Marck Script';font-size:64px;border:6px solid;border-radius:14px;padding:0 22px;transform:rotate(-8deg);animation:stamp .45s cubic-bezier(.2,1.6,.4,1)}
+.stamp.yes{color:var(--green)}.stamp.almost{color:#c78a00}.stamp.no{color:var(--red)}
+@keyframes stamp{0%{transform:scale(3) rotate(-20deg);opacity:0}100%{transform:scale(1) rotate(-8deg);opacity:1}}
+.center{text-align:center}
+.big{font-size:22px}
+.muted{opacity:.65}
+.pair-h{font-family:'Marck Script';font-size:26px}
+.verd{display:flex;gap:8px}.verd .btn{margin:6px 0;padding:14px 4px;font-size:19px}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.hr{border-top:3px dashed var(--ink);opacity:.25;margin:12px 0}
+.dots span{animation:bl 1.2s infinite;display:inline-block}.dots span:nth-child(2){animation-delay:.2s}.dots span:nth-child(3){animation-delay:.4s}
+@keyframes bl{0%,100%{opacity:.15}50%{opacity:1}}
+/* big screen */
+.screen{padding:24px 40px 40px;max-width:1500px;margin:0 auto}
+.screen .logo{font-size:64px}
+.screen .card{box-shadow:6px 6px 0 var(--ink)}
+.lob{display:grid;grid-template-columns:auto 1fr;gap:40px;align-items:start}
+.qrbox{background:#fff;border:4px solid var(--ink);border-radius:20px;padding:16px;display:inline-block;box-shadow:6px 6px 0 var(--ink)}
+.code{font-family:'Marck Script';font-size:80px;letter-spacing:8px;text-align:center}
+.screen .chip{font-size:28px;padding:8px 22px}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:18px}
+.pgrid .card{margin:0}
+.pgrid .chip{font-size:26px;display:flex;justify-content:space-between;width:100%}
+.stage{display:grid;grid-template-columns:1fr 300px;gap:28px}
+.stage .qbig{font-size:44px;line-height:1.2}
+.stage .abig{font-size:52px;line-height:1.15;font-family:'Marck Script'}
+.sb .row2{display:flex;justify-content:space-between;font-size:22px;padding:4px 0}
+.bar{height:12px;border:2px solid var(--ink);border-radius:8px;background:#fff;overflow:hidden;margin-bottom:6px}.bar i{display:block;height:100%;background:var(--pink)}
+.podium{display:flex;align-items:flex-end;justify-content:center;gap:18px;height:360px;margin:20px 0}
+.pod{width:230px;border:4px solid var(--ink);border-radius:18px 18px 0 0;text-align:center;padding:10px;box-shadow:5px 5px 0 var(--ink);animation:rise 1s ease backwards}
+.pod .pl{font-size:58px}.pod .pn{font-family:'Marck Script';font-size:32px}
+.pod.p1{height:100%;background:var(--mus)}.pod.p2{height:75%;background:var(--pink);animation-delay:.5s}.pod.p3{height:55%;background:var(--mint);animation-delay:.2s}
+@keyframes rise{from{transform:translateY(120%)}to{transform:none}}
+.noms{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+.noms .card{margin:0}
+.loveis{font-family:'Marck Script';font-size:26px;color:var(--red)}
+.gear{position:fixed;right:14px;bottom:14px;width:44px;height:44px;border-radius:50%;border:3px solid var(--ink);background:#fff;font-size:22px;z-index:20;opacity:.5}
+.gear:hover{opacity:1}
+.ovl{position:fixed;right:14px;bottom:68px;width:420px;max-width:calc(100vw - 28px);max-height:75vh;overflow:auto;z-index:20}
+.heart{color:var(--red)}
+@media(max-width:800px){.screen{padding:14px}.lob,.stage{grid-template-columns:1fr}.podium{height:300px}.pod{width:30%}}
+</style>
+</head>
+<body>
+<div class="dot" id="dot"></div>
+<div id="main"></div>
+<div id="adm"></div>
+<script>
+'use strict';
+/* ====================== НАСТРОЙКИ ====================== */
+const QS=[
+ 'Какое блюдо ты закажешь на «последний ужин» в жизни?',
+ 'Какой фильм или сериал ты готов(а) пересматривать бесконечно?',
+ 'Что ты купишь первым, если внезапно получишь миллион (кроме недвижимости)?',
+ 'Какая мелочь в совместном быту раздражает тебя сильнее всего?',
+ 'Какое первое слово пришло тебе в голову при знакомстве с партнёром?',
+ 'Как выглядит твой идеальный выходной? Три слова.',
+ 'Чем ты занимаешься, когда остаёшься один(одна) дома, и в чём не признаешься вслух?'
+];
+const ANSWER_SEC=300, GUESS_SEC=300;
+const BROKERS=['wss://broker.emqx.io:8084/mqtt','wss://broker.hivemq.com:8884/mqtt'];
+const NS='loveis-pg1';
+const PTS={yes:1,almost:.5,no:0};
+const STAMP={yes:'ВЕРНО!',almost:'ПОЧТИ!',no:'НЕТ!'};
+
+/* ====================== УТИЛИТЫ ====================== */
+const params=new URLSearchParams(location.search);
+const U=params.get('u')||'';            // суффикс для тестов в одном браузере
+const LS={get(k,d){try{const v=localStorage.getItem('lv'+U+'_'+k);return v==null?d:v}catch{return d}},
+          set(k,v){try{localStorage.setItem('lv'+U+'_'+k,v)}catch{}}};
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const rnd=n=>Math.floor(Math.random()*n);
+const genCode=()=>Array.from({length:4},()=>'ABCDEFGHJKMNPQRSTUVWXZ'[rnd(22)]).join('');
+const shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=rnd(i+1);[a[i],a[j]]=[a[j],a[i]]}return a};
+const fmtP=n=>String(n).replace('.',',');
+const fmtT=s=>{s=Math.max(0,s);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
+const heart='<span class="heart">♥</span>';
+
+/* ====================== СЕТЬ (MQTT через публичный брокер) ====================== */
+let client=null, base='', curBroker=0, netH=null, offset=0, isHost=false;
+function connect(i,fixed){
+  curBroker=i;
+  let ever=false,fails=0;
+  const c=mqtt.connect(BROKERS[i],{clientId:'lv_'+Math.random().toString(16).slice(2,10),reconnectPeriod:2000,connectTimeout:6000,clean:true});
+  client=c;
+  c.on('connect',()=>{ever=true;fails=0;setDot(true);netH.onConnect()});
+  c.on('close',()=>{setDot(false);
+    if(!ever&&!fixed&&++fails>=2){c.end(true);connect((i+1)%BROKERS.length,false)}});
+  c.on('message',(t,p,pk)=>{try{netH.onMessage(JSON.parse(p.toString()),pk.retain)}catch(e){console.warn(e)}});
+}
+function setDot(on){$('#dot').classList.toggle('on',!!on)}
+const pubRet=(t,o)=>client&&client.connected&&client.publish(base+'/'+t,JSON.stringify(o),{qos:1,retain:true});
+
+/* ====================== ХОСТ (большой экран, хранит всю правду) ====================== */
+let H=null, S=null, T=null;
+function newHost(){
+  return {code:genCode(),pin:String(1000+rnd(9000)),phase:'lobby',v:0,players:{},order:[],pairs:[],A:{},G:{},
+          deadline:0,seq:[],verd:[],rvi:0,step:0,res:null,qs:QS};
+}
+function pairOfH(pid){return H.pairs.find(p=>p.a===pid||p.b===pid)}
+function partnerH(pid){const p=pairOfH(pid);return p&&(p.a===pid?p.b:p.a)}
+function scoresH(){
+  const sc={};H.pairs.forEach(p=>sc[p.id]=0);
+  H.verd.forEach((v,i)=>{if(v&&H.seq[i])sc[H.seq[i].pr]+=PTS[v]});
+  return sc;
+}
+function pub(){
+  const pl={};
+  for(const id of H.order){const p=H.players[id];pl[id]={n:p.n,d:!!p.d,adm:!!p.adm}}
+  const st={v:H.v,code:H.code,phase:H.phase,now:Date.now(),deadline:H.deadline,players:pl,order:H.order,pairs:H.pairs,qs:H.qs};
+  if(H.phase==='reveal'){
+    const it=H.seq[H.rvi],pr=H.pairs.find(p=>p.id===it.pr),sc=scoresH();
+    st.rv={i:H.rvi,total:H.seq.length,step:H.step,au:it.au,gu:it.gu,q:it.q,qt:H.qs[it.q],pn:pr.n,
+      an:H.players[it.au].n,gn:H.players[it.gu].n,
+      guess:H.step>=1?(H.G[it.gu]||[])[it.q]||'':null,
+      ans:H.step>=2?(H.A[it.au]||[])[it.q]||'':null,
+      verdict:H.verd[H.rvi]||null,
+      sc:H.pairs.map(p=>({n:p.n,pts:sc[p.id]})).sort((a,b)=>b.pts-a.pts)};
+  }
+  if(H.phase==='results')st.res=H.res;
+  return st;
+}
+function commit(){
+  H.v++;LS.set('host',JSON.stringify(H));
+  S=pub();pubRet('state',S);render();
+}
+function clearT(){clearTimeout(T);T=null}
+function setPhase(p){
+  clearT();H.phase=p;
+  for(const id of H.order)H.players[id].d=false;
+  if(p==='answer'||p==='guess'){
+    H.deadline=Date.now()+(p==='answer'?ANSWER_SEC:GUESS_SEC)*1000;
+    const bag=p==='answer'?H.A:H.G;
+    for(const id of H.order)if(!bag[id])bag[id]=H.qs.map(()=>'');
+  }
+  if(p==='reveal'){
+    H.seq=[];H.verd=[];H.rvi=0;H.step=0;
+    for(const pr of shuffle(H.pairs.slice()))
+      for(let q=0;q<H.qs.length;q++){
+        H.seq.push({pr:pr.id,au:pr.a,gu:pr.b,q});
+        H.seq.push({pr:pr.id,au:pr.b,gu:pr.a,q});
+      }
+  }
+  if(p==='results')H.res=calcRes();
+  commit();
+  if(p==='reveal')revSched();
+}
+function calcRes(){
+  const sc=scoresH(),gp={},ap={},nos={};
+  H.order.forEach(id=>{gp[id]=0;ap[id]=0;nos[id]=0});
+  H.verd.forEach((v,i)=>{const it=H.seq[i];if(!it||!v)return;gp[it.gu]+=PTS[v];ap[it.au]+=PTS[v];if(v==='no')nos[it.au]++});
+  const max=H.qs.length*2;
+  const board=H.pairs.map(p=>({id:p.id,n:p.n,pts:sc[p.id],max,pct:max?sc[p.id]/max:0})).sort((a,b)=>b.pts-a.pts);
+  const pick=(o,dir)=>{const ids=H.order.slice().sort((x,y)=>dir*(o[y]-o[x]));return ids.length?{n:H.players[ids[0]].n,v:o[ids[0]]}:null};
+  const noms=[
+    {t:'Телепат вечера',i:'🔮',d:'Лучше всех угадывал(а) партнёра',w:pick(gp,1),u:'б.'},
+    {t:'Мимо кассы',i:'🎯',d:'Меньше всех попал(а) в ответы',w:pick(gp,-1),u:'б.'},
+    {t:'Человек-загадка',i:'🕵️',d:'Его(её) ответы угадывали хуже всех',w:pick(ap,-1),u:'б.'},
+    {t:'Строгий судья',i:'⚖️',d:'Чаще всех ставил(а) «Нет»',w:pick(nos,1),u:'×'}
+  ];
+  return {board,noms};
+}
+/* --- шаги показа --- */
+function revSched(){
+  clearT();
+  if(H.phase!=='reveal')return;
+  if(H.step===0)T=setTimeout(()=>revStep(1),3500);
+  else if(H.step===1)T=setTimeout(()=>revStep(2),4500);
+  else if(H.step===3)T=setTimeout(revNext,4200);
+}
+function revStep(s){H.step=s;commit();revSched()}
+function revNext(){
+  if(H.rvi+1>=H.seq.length)return setPhase('results');
+  H.rvi++;H.step=0;commit();revSched();
+}
+function setVerdict(v){
+  if(H.phase!=='reveal'||H.step!==2||H.verd[H.rvi]||!(v in PTS))return;
+  H.verd[H.rvi]=v;H.step=3;commit();revSched();
+}
+function checkAdvance(){
+  if(H.phase!=='answer'&&H.phase!=='guess')return;
+  const all=H.order.length&&H.order.every(id=>H.players[id].d);
+  if(all||Date.now()>H.deadline+1500)setPhase(H.phase==='answer'?'guess':'reveal');
+}
+/* --- входящие сообщения --- */
+const cleanName=n=>String(n||'').trim().slice(0,20)||'Гость';
+function hostIn(m){
+  if(!H||!m||typeof m.pid!=='string')return;
+  const id=m.pid,p=H.players[id];
+  switch(m.t){
+    case 'join':
+      if(!p){if(H.phase!=='lobby')return;H.players[id]={n:cleanName(m.n),d:false};H.order.push(id)}
+      else if(H.phase==='lobby'&&m.n)p.n=cleanName(m.n);
+      if(m.pin&&m.pin===H.pin)H.players[id].adm=true;
+      commit();break;
+    case 'ready':
+      if(!p||m.ph!==H.phase)return;
+      if(Array.isArray(m.a))(H.phase==='answer'?H.A:H.G)[id]=H.qs.map((_,i)=>String(m.a[i]||'').slice(0,300));
+      if(typeof m.val==='boolean'){p.d=m.val;commit();checkAdvance()}
+      break;
+    case 'verdict':
+      if(p&&H.phase==='reveal'&&H.seq[H.rvi].au===id)setVerdict(m.v);break;
+    case 'adm':
+      if(p&&p.adm&&m.pin===H.pin)hostAdm(m);break;
+  }
+}
+function hostAdm(m){
+  const L=H.phase==='lobby';
+  switch(m.op){
+    case 'pair':{
+      if(!L||m.a===m.b||!H.players[m.a]||!H.players[m.b]||pairOfH(m.a)||pairOfH(m.b))return;
+      const n=cleanName(m.n&&m.n.trim()?m.n:H.players[m.a].n+' & '+H.players[m.b].n).slice(0,28);
+      H.pairs.push({id:'p'+Date.now().toString(36)+rnd(99),n,a:m.a,b:m.b});commit();break}
+    case 'unpair':if(!L)return;H.pairs=H.pairs.filter(p=>p.id!==m.id);commit();break;
+    case 'kick':if(!L||!H.players[m.pid])return;
+      H.pairs=H.pairs.filter(p=>p.a!==m.pid&&p.b!==m.pid);delete H.players[m.pid];
+      H.order=H.order.filter(x=>x!==m.pid);commit();break;
+    case 'start':
+      if(L&&H.pairs.length&&H.order.every(pairOfH))setPhase('answer');break;
+    case 'plus':if(H.phase==='answer'||H.phase==='guess'){H.deadline=Math.max(H.deadline,Date.now())+60000;commit()}break;
+    case 'force':if(H.phase==='answer')setPhase('guess');else if(H.phase==='guess')setPhase('reveal');break;
+    case 'next':
+      if(H.phase!=='reveal')break;
+      if(H.step<2)revStep(H.step+1);else if(H.step===3)revNext();break;
+    case 'skipq':if(H.phase==='reveal')revNext();break;
+    case 'verd':setVerdict(m.v);break;
+    case 'again':
+      if(H.phase==='results'){H.A={};H.G={};H.verd=[];H.seq=[];H.res=null;setPhase('lobby')}break;
+  }
+}
+function startHost(resume){
+  isHost=true;
+  if(resume){H=JSON.parse(LS.get('host'))}else{H=newHost();}
+  base=NS+'/'+H.code;
+  S=pub();
+  netH={
+    onConnect(){client.subscribe(base+'/up',{qos:1});pubRet('state',S);render()},
+    onMessage:m=>hostIn(m)
+  };
+  connect(0,false);
+  commit();
+  if(H.phase==='reveal')revSched();
+  setInterval(()=>{
+    checkAdvance();
+    S=pub();
+    if(H.phase==='answer'||H.phase==='guess')render();
+    if(Math.floor(Date.now()/1000)%6===0)pubRet('state',S);
+  },1000);
+  document.addEventListener('keydown',e=>{
+    if(e.key===' '||e.key==='ArrowRight'){e.preventDefault();act('next')}
+  });
+}
+
+/* ====================== КЛИЕНТ (телефон) ====================== */
+const ME={pid:LS.get('pid',''),name:LS.get('name',''),pin:LS.get('pin','')};
+if(!ME.pid){ME.pid='u'+Math.random().toString(36).slice(2,10);LS.set('pid',ME.pid)}
+let joined=false,joinTried=0,roomNF=false;
+function send(m){if(client&&client.connected)client.publish(base+'/up',JSON.stringify(Object.assign({pid:ME.pid},m)),{qos:1})}
+function startPlay(code,b){
+  base=NS+'/'+code;
+  joined=LS.get('j_'+code)==='1';
+  netH={
+    onConnect(){
+      client.subscribe(base+'/state',{qos:1});
+      if(joined)send({t:'join',n:ME.name,pin:ME.pin});
+      setTimeout(()=>{if(!S){roomNF=true;render()}},7000);
+    },
+    onMessage(m,ret){
+      S=m;if(!ret)offset=m.now-Date.now();
+      if(joined&&!S.players[ME.pid]&&S.phase==='lobby')send({t:'join',n:ME.name,pin:ME.pin});
+      render();
+    }
+  };
+  connect(b!=null?b:0,b!=null);
+}
+
+/* ====================== ДЕЙСТВИЯ ====================== */
+let sel=[],admOpen=null;
+function act(op,x){
+  x=x||{};
+  if(isHost)hostAdm(Object.assign({op},x));
+  else send(Object.assign({t:'adm',op,pin:ME.pin},x));
+}
+const pairOf=(st,pid)=>st.pairs.find(p=>p.a===pid||p.b===pid);
+const canStart=st=>st.pairs.length>0&&st.order.every(id=>pairOf(st,id));
+const draftKey=ph=>'d_'+S.code+'_'+ph;
+let sendT=null;
+document.addEventListener('click',e=>{
+  const b=e.target.closest('[data-a]');if(!b)return;
+  const a=b.dataset.a;
+  switch(a){
+    case 'sel':{const id=b.dataset.pid,i=sel.indexOf(id);if(i>=0)sel.splice(i,1);else{sel.push(id);if(sel.length>2)sel.shift()}render();break}
+    case 'pair':{if(sel.length!==2)return;const n=prompt('Название пары (можно оставить пустым)','');if(n===null)return;
+      act('pair',{a:sel[0],b:sel[1],n});sel=[];break}
+    case 'kick':{if(!sel.length)return;if(confirm('Удалить выбранных из игры?')){sel.forEach(pid=>act('kick',{pid}));sel=[]}break}
+    case 'unpair':act('unpair',{id:b.dataset.id});break;
+    case 'start':act('start');break;
+    case 'plus':case 'force':case 'next':case 'skipq':case 'again':act(a);break;
+    case 'verd':act('verd',{v:b.dataset.v});break;
+    case 'myverd':send({t:'verdict',v:b.dataset.v});break;
+    case 'admtoggle':admOpen=!(admOpen===null?(S&&S.phase==='lobby'):admOpen);render();break;
+    case 'gear':admOpen=!admOpen;render();break;
+    case 'done':sendDone(true);break;
+    case 'edit':send({t:'ready',ph:S.phase,val:false});break;
+    case 'join':doJoin();break;
+    case 'home-host':{const saved=LS.get('host');
+      if(saved&&confirm('Продолжить прошлую игру? (Отмена — начать новую)'))startHost(true);else startHost(false);break}
+    case 'home-join':{const c=($('#hc').value||'').trim().toUpperCase();if(c.length===4)location.search='?r='+c+(U?'&u='+U:'');break}
+  }
+});
+function sendDone(val){
+  const a=readForm();
+  LS.set(draftKey(S.phase),JSON.stringify(a));
+  send({t:'ready',ph:S.phase,val,a});
+}
+function readForm(){return Array.from(document.querySelectorAll('textarea[data-i]')).map(t=>t.value)}
+function doJoin(){
+  const n=($('#nm').value||'').trim();if(!n){$('#nm').focus();return}
+  ME.name=n;LS.set('name',n);
+  const pin=$('#pin')?($('#pin').value||'').trim():'';
+  if(pin){ME.pin=pin;LS.set('pin',pin)}
+  joined=true;LS.set('j_'+S.code,'1');joinTried=Date.now();
+  send({t:'join',n,pin:ME.pin});render();
+}
+document.addEventListener('input',e=>{
+  const t=e.target;if(!t.matches('textarea[data-i]'))return;
+  const a=readForm();LS.set(draftKey(S.phase),JSON.stringify(a));
+  clearTimeout(sendT);const ph=S.phase;
+  sendT=setTimeout(()=>send({t:'ready',ph,a}),500);
+});
+
+/* ====================== ОТРИСОВКА ====================== */
+let lastKey=null,qrCache={};
+function qrFor(url){
+  if(!qrCache[url]){const d=document.createElement('div');new QRCode(d,{text:url,width:300,height:300,correctLevel:QRCode.CorrectLevel.M});qrCache[url]=d}
+  return qrCache[url];
+}
+const logoH='<div class="logo">Love <b>is</b>… '+heart+'</div>';
+const timerH=()=>'<span data-t="1"></span>';
+function tickTimers(){
+  if(!S||!S.deadline)return;
+  const left=Math.ceil((S.deadline-(Date.now()+(isHost?0:offset)))/1000);
+  document.querySelectorAll('[data-t]').forEach(el=>{el.textContent=fmtT(left);const p=el.parentElement;if(p)p.classList.toggle('low',left<=30)});
+}
+setInterval(tickTimers,300);
+
+function render(){
+  let v;
+  if(!isHost&&!params.get('r'))v=homeView();
+  else if(!S)v={key:'wait',html:roomNF?'<div class="wrap">'+logoH+'<div class="card pink center">Комната не найдена.<br>Проверь код или попроси ведущего открыть большой экран.</div></div>'
+      :'<div class="wrap">'+logoH+'<div class="sub">Подключаемся<span class="dots"><span>.</span><span>.</span><span>.</span></span></div></div>'};
+  else v=isHost?screenView():playView();
+  if(v.key!==lastKey){
+    $('#main').innerHTML=v.html;lastKey=v.key;
+    if(v.bind)v.bind();
+    if(v.focus){const el=$(v.focus);el&&el.focus()}
+  }
+  renderAdm();tickTimers();
+}
+function homeView(){
+  const saved=LS.get('host');
+  return {key:'home',html:`<div class="wrap">${logoH}<div class="sub">Кто лучше знает свою половинку</div>
+   <div class="card pink"><h2>Я гость</h2><label>Код комнаты с экрана</label>
+   <input type="text" id="hc" maxlength="4" autocapitalize="characters" placeholder="ABCD" style="text-transform:uppercase;text-align:center;font-size:30px;letter-spacing:6px">
+   <button class="btn" data-a="home-join">Войти</button></div>
+   <div class="card mint"><h2>Я ведущий</h2><div class="muted">Откройте эту страницу на ноутбуке, подключённом к большому экрану.</div>
+   <button class="btn white" data-a="home-host">Создать игру</button></div></div>`};
+}
+
+/* ---------- общие куски ---------- */
+function revealHTML(rv,big){
+  const cls=big?'qbig':'q';
+  let h=`<div class="pair-h">${esc(rv.pn)} <span class="muted" style="font-size:.7em">· ${rv.i+1}/${rv.total}</span></div>
+   <div class="card peach"><div class="qn">Вопрос ${rv.q+1}</div><div class="${cls}">${esc(rv.qt)}</div>
+   <div class="muted">Отвечает про себя: <b>${esc(rv.an)}</b></div></div>`;
+  if(rv.step===0)h+=`<div class="card center big"><b>${esc(rv.gn)}</b> угадывает<span class="dots"><span>.</span><span>.</span><span>.</span></span></div>`;
+  if(rv.step>=1)h+=`<div class="card pink"><div class="muted">Догадка — ${esc(rv.gn)}:</div><div class="${big?'abig':'hand big'}">${esc(rv.guess)||'—'}</div></div>`;
+  if(rv.step>=2)h+=`<div class="card mint"><div class="muted">Настоящий ответ — ${esc(rv.an)}:</div><div class="${big?'abig':'hand big'}">${esc(rv.ans)||'—'}</div></div>`;
+  if(rv.step===2)h+=`<div class="center muted">${esc(rv.an)}, оцени догадку<span class="dots"><span>.</span><span>.</span><span>.</span></span></div>`;
+  if(rv.step===3)h+=`<div class="center" style="margin:10px"><span class="stamp ${rv.verdict||'no'}">${STAMP[rv.verdict||'no']}</span></div>`;
+  return h;
+}
+function admHTML(){
+  const st=S,ph=st.phase;let h='';
+  if(isHost)h+=`<div class="muted">PIN админа для телефона: <b style="font-size:24px">${esc(H.pin)}</b></div><div class="hr"></div>`;
+  if(ph==='lobby'){
+    const free=st.order.filter(id=>!pairOf(st,id));
+    h+=`<b>Без пары:</b><div>${free.map(id=>`<button class="chip ${sel.includes(id)?'sel':''}" data-a="sel" data-pid="${id}">${esc(st.players[id].n)}</button>`).join('')||'<span class="muted">никого</span>'}</div>
+    <button class="btn sm pink" data-a="pair" ${sel.length===2?'':'disabled'}>♥ Объединить</button>
+    <button class="btn sm white" data-a="kick" ${sel.length?'':'disabled'}>Удалить</button>`;
+    if(st.pairs.length)h+=`<div class="hr"></div><b>Пары:</b>`+st.pairs.map(p=>`<div>${esc(p.n)} <button class="chip" style="padding:0 10px" data-a="unpair" data-id="${p.id}">✕</button></div>`).join('');
+    h+=`<button class="btn" data-a="start" ${canStart(st)?'':'disabled'}>Старт игры ▶</button>`;
+    if(!canStart(st))h+=`<div class="muted">Старт появится, когда все игроки будут в парах.</div>`;
+  }else if(ph==='answer'||ph==='guess'){
+    const n=st.order.filter(id=>st.players[id].d).length;
+    h+=`<div>Готовы: <b>${n}/${st.order.length}</b></div>
+    <button class="btn sm" data-a="plus">+1 минута</button><button class="btn sm white" data-a="force">Дальше, не ждать ▶</button>`;
+  }else if(ph==='reveal'){
+    const rv=st.rv;
+    h+=`<button class="btn sm" data-a="next">Дальше ▶</button><button class="btn sm white" data-a="skipq">Пропустить</button>`;
+    if(rv.step===2)h+=`<div class="hr"></div><div class="muted">Решить за автора:</div><div class="verd">
+      <button class="btn mint" data-a="verd" data-v="yes">Верно</button><button class="btn" data-a="verd" data-v="almost">Почти</button><button class="btn red" data-a="verd" data-v="no">Нет</button></div>`;
+  }else if(ph==='results'){
+    h+=`<button class="btn" data-a="again">Играть снова</button>`;
+  }
+  return h;
+}
+function renderAdm(){
+  const box=$('#adm');
+  if(!S){box.innerHTML='';return}
+  if(isHost){
+    box.innerHTML=`<button class="gear" data-a="gear">⚙</button>`+(admOpen?`<div class="card ovl">${admHTML()}</div>`:'');
+    return;
+  }
+  const me=S.players[ME.pid];
+  if(!me||!me.adm){box.innerHTML='';return}
+  const open=admOpen===null?S.phase==='lobby':admOpen;
+  box.innerHTML=`<div class="wrap" style="padding-top:0"><div class="card mus"><b data-a="admtoggle" style="cursor:pointer">⚙ Панель админа ${open?'▾':'▸'}</b>${open?'<div class="hr"></div>'+admHTML():''}</div></div>`;
+}
+
+/* ---------- большой экран ---------- */
+function screenView(){
+  const st=S,ph=st.phase,pn=id=>esc(st.players[id].n);
+  const url=location.origin+location.pathname+'?r='+st.code+'&b='+curBroker+(U?'&u='+U:'');
+  if(ph==='lobby')return {key:'L'+st.v+'|'+url,html:`<div class="screen">${logoH}<div class="sub big">Заходи с телефона: отсканируй QR или введи код</div>
+    <div class="lob"><div><div class="qrbox" id="qr"></div><div class="code">${st.code}</div></div>
+    <div><h2 style="font-size:40px">Уже в игре: ${st.order.length}</h2><div style="margin-top:10px">${st.order.map(id=>`<span class="chip pop ${st.players[id].adm?'adm':''}">${pn(id)}</span>`).join('')||'<span class="muted">ждём первых гостей…</span>'}</div>
+    ${st.pairs.length?`<h2 style="font-size:34px;margin-top:24px">Пары</h2>`+st.pairs.map(p=>`<div class="card pink big" style="display:inline-block;margin:6px 12px 6px 0">${esc(p.n)}</div>`).join(''):''}</div></div></div>`,
+    bind(){$('#qr').appendChild(qrFor(url))}};
+  if(ph==='answer'||ph==='guess'){
+    const t=ph==='answer'?'Часть 1 · Отвечаем про себя':'Часть 2 · Угадываем ответы партнёра';
+    const n=st.order.filter(id=>st.players[id].d).length;
+    return {key:'A'+st.v+ph,html:`<div class="screen">${logoH}<h2 class="center" style="font-size:38px">${t}</h2>
+     <div class="timer" style="font-size:96px">${timerH()}</div><div class="center big">Готовы: ${n} из ${st.order.length}</div>
+     <div class="pgrid" style="margin-top:20px">${st.pairs.map(p=>`<div class="card ${p.a&&st.players[p.a].d&&st.players[p.b].d?'mint':''}"><div class="pair-h">${esc(p.n)}</div>
+      ${[p.a,p.b].map(id=>`<div class="chip ${st.players[id].d?'ok':''}"><span>${pn(id)}</span><span>${st.players[id].d?'✓':'…'}</span></div>`).join('')}</div>`).join('')}</div></div>`};
+  }
+  if(ph==='reveal'){
+    const rv=st.rv,mx=Math.max(1,...rv.sc.map(s=>s.pts),1);
+    return {key:'R'+st.v,html:`<div class="screen">${logoH}<div class="stage"><div>${revealHTML(rv,true)}</div>
+     <div class="card sb"><h3 style="font-size:30px">Счёт</h3>${rv.sc.map(s=>`<div class="row2"><span>${esc(s.n)}</span><b>${fmtP(s.pts)}</b></div><div class="bar"><i style="width:${s.pts/mx*100}%"></i></div>`).join('')}</div></div></div>`};
+  }
+  if(ph==='results'){
+    const r=st.res,top=r.board.slice(0,3),cls=['p1','p2','p3'],ico=['🥇','🥈','🥉'];
+    const order=top.length>=3?[1,0,2]:top.map((_,i)=>i);
+    return {key:'F'+st.v,html:`<div class="screen">${logoH}<h2 class="center" style="font-size:42px">Итоги вечера</h2>
+     <div class="podium">${order.map(i=>`<div class="pod ${cls[i]}"><div class="pl">${ico[i]}</div><div class="pn">${esc(top[i].n)}</div><div style="font-size:34px">${fmtP(top[i].pts)} <span class="muted" style="font-size:20px">из ${top[i].max}</span></div></div>`).join('')}</div>
+     <div class="noms">${r.noms.filter(x=>x.w).map(x=>`<div class="card mus"><div style="font-size:40px">${x.i}</div><h3 style="font-size:30px">${x.t}</h3><div class="muted">${x.d}</div><div class="big"><b>${esc(x.w.n)}</b> — ${fmtP(x.w.v)} ${x.u}</div></div>`).join('')}</div>
+     <div class="noms" style="margin-top:20px">${r.board.map((b,i)=>`<div class="card pink"><div class="loveis">${loveCap(b.pct)}</div><div class="big"><b>${i+1}. ${esc(b.n)}</b> · ${fmtP(b.pts)}/${b.max}</div></div>`).join('')}</div></div>`};
+  }
+}
+function loveCap(p){
+  return p>=.85?'Love is… читать мысли друг друга':p>=.6?'Love is… знать любимого человека почти наизусть':p>=.35?'Love is… каждый день открывать в человеке что-то новое':'Love is… любить вопреки неверным ответам';
+}
+
+/* ---------- телефон ---------- */
+function playView(){
+  const st=S,me=st.players[ME.pid],ph=st.phase;
+  const wrap=h=>`<div class="wrap">${logoH}${h}</div>`;
+  if(!me){
+    if(ph!=='lobby')return {key:'late',html:wrap('<div class="card pink center">Игра уже идёт. Смотри на большой экран! '+heart+'</div>')};
+    if(joined&&Date.now()-joinTried<4000)setTimeout(render,4200);
+    if(joined&&LS.get('j_'+st.code)==='1'&&ME.name)return {key:'joining',html:wrap('<div class="sub">Заходим<span class="dots"><span>.</span><span>.</span><span>.</span></span></div>')};
+    return {key:'join',focus:'#nm',html:wrap(`<div class="card pink"><h2>Как тебя зовут?</h2>
+      <input type="text" id="nm" maxlength="20" placeholder="Имя" value="${esc(ME.name)}" autocomplete="off">
+      <details style="margin-top:12px"><summary class="muted">я ведущий</summary><label>PIN с большого экрана (⚙)</label><input type="tel" id="pin" maxlength="4" placeholder="1234" value="${esc(ME.pin)}"></details>
+      <button class="btn" data-a="join">Войти в игру</button></div>`)};
+  }
+  const pr=pairOf(st,ME.pid),partner=pr&&st.players[pr.a===ME.pid?pr.b:pr.a];
+  if(ph==='lobby')return {key:'l'+st.v+(pr?pr.id:''),html:wrap(`<div class="card mint center"><h2>Привет, ${esc(me.n)}!</h2>
+    ${pr?`<div class="big">Твоя пара: <b>${esc(pr.n)}</b> ${heart}<br>Партнёр: ${esc(partner.n)}</div>`:'<div class="muted">Ждём, пока ведущий соберёт пары…</div>'}</div>
+    <div class="card"><b>Уже в игре (${st.order.length}):</b><div>${st.order.map(id=>`<span class="chip">${esc(st.players[id].n)}</span>`).join('')}</div></div>`)};
+  if(ph==='answer'||ph==='guess'){
+    if(me.d){
+      const n=st.order.filter(id=>st.players[id].d).length;
+      return {key:'w'+st.v,html:wrap(`<div class="card mint center"><h2>Готово! ✓</h2><div class="timer">${timerH()}</div>
+        <div>Готовы: ${n} из ${st.order.length}</div><div class="muted">Смотри на большой экран</div></div>
+        <button class="btn white" data-a="edit">Изменить ответы</button>`)};
+    }
+    let draft=[];try{draft=JSON.parse(LS.get(draftKey(ph),'[]'))}catch{}
+    return {key:'f'+ph+me.d,html:wrap(`<div class="card pink center"><div class="muted">${ph==='answer'?'Отвечай про себя':'Что ответит '+esc(partner.n)+'?'}</div><div class="timer">${timerH()}</div></div>
+      ${st.qs.map((q,i)=>`<div class="card"><div class="qn">${i+1}/${st.qs.length}</div><div class="q">${esc(q)}</div>
+        <textarea data-i="${i}" maxlength="300" placeholder="${ph==='answer'?'Твой ответ…':'Догадка про '+esc(partner.n)+'…'}">${esc(draft[i]||'')}</textarea></div>`).join('')}
+      <button class="btn" data-a="done">Готово ✓</button>`)};
+  }
+  if(ph==='reveal'){
+    const rv=st.rv,mine=rv.au===ME.pid&&rv.step===2&&!rv.verdict;
+    return {key:'r'+st.v,html:wrap(revealHTML(rv,false)+(mine?`<div class="card mus"><b>Была ли догадка верной?</b><div class="verd">
+      <button class="btn mint" data-a="myverd" data-v="yes">Верно</button><button class="btn" data-a="myverd" data-v="almost">Почти</button><button class="btn red" data-a="myverd" data-v="no">Нет</button></div></div>`:''))};
+  }
+  if(ph==='results'){
+    const r=st.res,i=r.board.findIndex(b=>pr&&b.id===pr.id),b=r.board[i];
+    return {key:'x'+st.v,html:wrap(b?`<div class="card mus center"><h2>${i+1} место</h2><div class="big"><b>${esc(b.n)}</b><br>${fmtP(b.pts)} из ${b.max}</div></div>
+      <div class="card pink center"><div class="loveis">${loveCap(b.pct)}</div></div>`:'<div class="card center">Спасибо за игру!</div>')};
+  }
+}
+
+/* ====================== СТАРТ ====================== */
+render();
+if(params.get('r')){
+  const b=params.get('b');
+  startPlay(params.get('r').toUpperCase(),b==null?null:+b);
+}
+</script>
+</body>
+</html>

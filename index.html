@@ -111,11 +111,16 @@ label{display:block;margin:10px 0 4px}
 .vbar i{display:block;width:100%;background:var(--pink);transition:height 1s ease;min-height:2px}
 .vn{font-family:'Pangolin';font-size:28px}
 .screen{padding-bottom:130px}
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.duo .card{margin:8px 0}
+.abig2{font-size:40px;line-height:1.15;font-family:'Marck Script'}
+.stamp.sm{font-size:44px;border-width:4px;padding:0 14px}
+@media(max-width:800px){.duo{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <div class="dot" id="dot"></div>
-<div style="position:fixed;left:8px;bottom:4px;font-size:11px;opacity:.4;z-index:9">v13 · связь: <span id="ver">…</span></div>
+<div style="position:fixed;left:8px;bottom:4px;font-size:11px;opacity:.4;z-index:9">v14 · связь: <span id="ver">…</span></div>
 <div id="main"></div>
 <div id="adm"></div>
 <div id="rx"></div>
@@ -132,7 +137,7 @@ const QS=[
  'Кем бы ты работал, если бы деньги не были проблемой?',
  'В какую страну ты полетишь завтра, если билет бесплатный?'
 ];
-const ANSWER_SEC=300, GUESS_ITEM_SEC=45, DUEL_SEC=20;
+const ANSWER_SEC=300, GUESS_ITEM_SEC=40, DUEL_SEC=20;
 const BONUS_QS=['Кто чаще опаздывает?','Кто лучше готовит?','Кто первым мирится после ссоры?','Кто больше любит тратить деньги?','Кто громче храпит?','Кто романтичнее?','Кто лучше водит машину?','Кто дольше собирается?','Кто чаще говорит «я же говорил(а)»?','Кто громче смеётся?'];
 const REACTS=['❤️','😂','👏','😱','🔥','😍'];
 const BROKERS=['wss://broker.emqx.io:8084/mqtt','wss://broker.hivemq.com:8884/mqtt','wss://test.mosquitto.org:8081/mqtt'];
@@ -202,23 +207,23 @@ const pubRet=(t,o)=>pubAll(t,o,{qos:1,retain:true});
 let H=null, S=null, T=null;
 function newHost(){
   return {code:genCode(),pin:String(1000+rnd(9000)),phase:'lobby',v:0,players:{},order:[],pairs:[],A:{},G:{},
-          deadline:0,seq:[],verd:[],rvi:0,step:0,res:null,qs:QS,kicked:{},jki:[],bonus:{},dseq:[],dq:0,dstep:0,dvotes:{},dres:null};
+          deadline:0,seq:[],verd:[],rvi:0,step:0,res:null,qs:QS,kicked:{},jki:[],jkUsed:{},bonus:{},dseq:[],dq:0,dstep:0,dvotes:{},dres:null};
 }
 function pairOfH(pid){return H.pairs.find(p=>p.a===pid||p.b===pid)}
 function partnerH(pid){const p=pairOfH(pid);return p&&(p.a===pid?p.b:p.a)}
-function ptsOf(i,v){
+function ptsOf(i,side,v){
   if(!v)return 0;
-  if(H.jki[i])return v==='yes'?2:v==='almost'?1:-1;
+  if(((H.jki[i])||{})[side])return v==='yes'?2:v==='almost'?1:-1;
   return PTS[v];
 }
 function scoresH(){
   const sc={};H.pairs.forEach(p=>sc[p.id]=H.bonus[p.id]||0);
-  H.verd.forEach((v,i)=>{if(v&&H.seq[i])sc[H.seq[i].pr]+=ptsOf(i,v)});
+  H.verd.forEach((V,i)=>{if(V&&H.seq[i])for(const k of ['a','b'])if(V[k])sc[H.seq[i].pr]+=ptsOf(i,k,V[k])});
   return sc;
 }
 function pub(){
   const pl={};
-  for(const id of H.order){const p=H.players[id];pl[id]={n:p.n,d:!!p.d,adm:!!p.adm}}
+  for(const id of H.order){const p=H.players[id];pl[id]={n:p.n,d:!!p.d,adm:!!p.adm,jk:!!(H.jkUsed||{})[id]}}
   const sc=scoresH();
   const st={v:H.v,code:H.code,phase:H.phase,now:Date.now(),deadline:H.deadline,players:pl,order:H.order,pairs:H.pairs,qs:H.qs,kicked:Object.keys(H.kicked||{}),
     sc:H.pairs.map(p=>({id:p.id,n:p.n,pts:sc[p.id]})).sort((a,b)=>b.pts-a.pts)};
@@ -227,14 +232,13 @@ function pub(){
     st.du={i:H.dq,total:H.dseq.length,q:it.q,step:H.dstep,pn:pr.n,ta:pr.a,tb:pr.b,an:H.players[pr.a].n,bn:H.players[pr.b].n,res:H.dstep===1?H.dres:null};
   }
   if(H.phase==='reveal'){
-    const it=H.seq[H.rvi],pr=H.pairs.find(p=>p.id===it.pr);
-    st.rv={i:H.rvi,total:H.seq.length,step:H.step,au:it.au,gu:it.gu,q:it.q,qt:H.qs[it.q],pn:pr.n,
-      an:H.players[it.au].n,gn:H.players[it.gu].n,
-      guess:H.step>=1?(H.G[it.gu]||[])[it.q]||'':null,
-      ans:H.step>=2?(H.A[it.au]||[])[it.q]||'':null,
-      verdict:H.verd[H.rvi]||null,
-      jk:H.step>=1?!!H.jki[H.rvi]:false,
-      pts:H.verd[H.rvi]?ptsOf(H.rvi,H.verd[H.rvi]):null};
+    const it=H.seq[H.rvi],pr=H.pairs.find(p=>p.id===it.pr),J=H.jki[H.rvi]||{},V=H.verd[H.rvi]||{};
+    const side=(au,gu,k)=>({an:H.players[au].n,gn:H.players[gu].n,
+      guess:H.step>=1?(H.G[gu]||[])[it.q]||'':null,
+      ans:H.step>=2?(H.A[au]||[])[it.q]||'':null,
+      v:V[k]||null,jk:H.step>=1?!!J[k]:false,pts:V[k]?ptsOf(H.rvi,k,V[k]):null});
+    st.rv={i:H.rvi,total:H.seq.length,step:H.step,q:it.q,qt:H.qs[it.q],pn:pr.n,ids:[pr.a,pr.b],
+      sent:[!!H.players[pr.a].d,!!H.players[pr.b].d],s:[side(pr.a,pr.b,'a'),side(pr.b,pr.a,'b')]};
   }
   if(H.phase==='results')st.res=H.res;
   return st;
@@ -252,12 +256,9 @@ function setPhase(p){
     for(const id of H.order)if(!H.A[id])H.A[id]=H.qs.map(()=>'');
   }
   if(p==='reveal'){
-    H.seq=[];H.verd=[];H.G={};H.jki=[];H.bonus={};H.pairs.forEach(p=>{p.jk=false});H.rvi=0;H.step=0;H.deadline=Date.now()+GUESS_ITEM_SEC*1000;
+    H.seq=[];H.verd=[];H.G={};H.jki=[];H.jkUsed={};H.bonus={};H.rvi=0;H.step=0;H.deadline=Date.now()+GUESS_ITEM_SEC*1000;
     for(const pr of shuffle(H.pairs.slice()))
-      for(let q=0;q<H.qs.length;q++){
-        H.seq.push({pr:pr.id,au:pr.a,gu:pr.b,q});
-        H.seq.push({pr:pr.id,au:pr.b,gu:pr.a,q});
-      }
+      for(let q=0;q<H.qs.length;q++)H.seq.push({pr:pr.id,q});
   }
   if(p==='duel'){
     const qs=shuffle(BONUS_QS.slice());
@@ -272,8 +273,11 @@ function setPhase(p){
 function calcRes(){
   const sc=scoresH(),gp={},ap={};
   H.order.forEach(id=>{gp[id]=0;ap[id]=0});
-  H.verd.forEach((v,i)=>{const it=H.seq[i];if(!it||!v)return;gp[it.gu]+=ptsOf(i,v);ap[it.au]+=PTS[v]});
-  const max=H.qs.length*2+1;
+  H.verd.forEach((V,i)=>{
+    const it=H.seq[i],pr=it&&H.pairs.find(x=>x.id===it.pr);if(!pr||!V)return;
+    for(const [k,au,gu] of [['a',pr.a,pr.b],['b',pr.b,pr.a]])if(V[k]){gp[gu]+=ptsOf(i,k,V[k]);ap[au]+=PTS[V[k]]}
+  });
+  const max=H.qs.length*2+2;
   const board=H.pairs.map(p=>({id:p.id,n:p.n,pts:sc[p.id],max,pct:max?sc[p.id]/max:0})).sort((a,b)=>b.pts-a.pts);
   const pick=(o,dir)=>{const ids=H.order.slice().sort((x,y)=>dir*(o[y]-o[x]));return ids.length?{n:H.players[ids[0]].n,v:o[ids[0]]}:null};
   const noms=[
@@ -294,11 +298,17 @@ function revSched(){
 function revStep(s){H.step=s;commit();revSched()}
 function revNext(){
   if(H.rvi+1>=H.seq.length)return setPhase(BONUS_QS.length&&H.pairs.length>1?'duel':'results');
-  H.rvi++;H.step=0;H.deadline=Date.now()+GUESS_ITEM_SEC*1000;commit();revSched();
+  H.rvi++;H.step=0;H.deadline=Date.now()+GUESS_ITEM_SEC*1000;
+  for(const id of H.order)H.players[id].d=false;
+  commit();revSched();
 }
-function setVerdict(v){
-  if(H.phase!=='reveal'||H.step!==2||H.verd[H.rvi]||!(v in PTS))return;
-  H.verd[H.rvi]=v;H.step=3;commit();revSched();
+function setVerdict(side,v){
+  if(H.phase!=='reveal'||H.step!==2||(side!=='a'&&side!=='b')||!(v in PTS))return;
+  const V=H.verd[H.rvi]=H.verd[H.rvi]||{};
+  if(V[side])return;
+  V[side]=v;
+  if(V.a&&V.b)H.step=3;
+  commit();revSched();
 }
 /* --- бонус-раунд «Кто сильнее?»: остальные пары голосуют про одну пару, без очков --- */
 function duelInit(){
@@ -348,11 +358,14 @@ function hostIn(m){
       if(typeof m.val==='boolean'){p.d=m.val;commit();checkAdvance()}
       break;
     case 'guess':{
-      const it=H.seq[H.rvi];
-      if(p&&H.phase==='reveal'&&H.step===0&&m.i===H.rvi&&it.gu===id){
+      const it=H.seq[H.rvi],pr=it&&H.pairs.find(x=>x.id===it.pr);
+      if(p&&H.phase==='reveal'&&H.step===0&&m.i===H.rvi&&pr&&(id===pr.a||id===pr.b)&&!p.d){
         (H.G[id]=H.G[id]||[])[it.q]=String(m.text||'').slice(0,300);
-        const pr=pairOfH(id);if(m.jk&&pr&&!pr.jk){pr.jk=true;H.jki[H.rvi]=true}
-        revStep(1)}
+        p.d=true;
+        H.jkUsed=H.jkUsed||{};
+        if(m.jk&&!H.jkUsed[id]){H.jkUsed[id]=true;(H.jki[H.rvi]=H.jki[H.rvi]||{})[id===pr.b?'a':'b']=true}
+        if(H.players[pr.a].d&&H.players[pr.b].d)revStep(1);else commit();
+      }
       break}
     case 'vote':
       if(p&&H.phase==='duel'&&H.dstep===0&&m.i===H.dq&&(m.c==='a'||m.c==='b')&&!p.d){
@@ -390,14 +403,14 @@ function hostAdm(m){
       if(H.phase!=='reveal')break;
       if(H.step<2)revStep(H.step+1);else if(H.step===3)revNext();break;
     case 'skipq':if(H.phase==='reveal')revNext();break;
-    case 'verd':setVerdict(m.v);break;
+    case 'verd':setVerdict(m.s,m.v);break;
     case 'again':
-      if(H.phase==='results'){H.A={};H.G={};H.verd=[];H.seq=[];H.res=null;H.jki=[];H.bonus={};H.pairs.forEach(p=>{p.jk=false});setPhase('lobby')}break;
+      if(H.phase==='results'){H.A={};H.G={};H.verd=[];H.seq=[];H.res=null;H.jki=[];H.jkUsed={};H.bonus={};setPhase('lobby')}break;
   }
 }
 function startHost(resume){
   isHost=true;
-  if(resume){H=JSON.parse(LS.get('host'));if(H.phase==='guess'){H.phase='answer';H.deadline=0}H.jki=H.jki||[];H.bonus=H.bonus||{};H.dvotes=H.dvotes||{};H.dseq=H.dseq||[];H.dq=H.dq||0;H.dstep=H.dstep||0;if(H.phase==='duel'&&!H.dseq.length)H.phase='results'}else{H=newHost();}
+  if(resume){H=JSON.parse(LS.get('host'));if(H.phase==='guess'){H.phase='answer';H.deadline=0}H.jki=H.jki||[];H.jkUsed=H.jkUsed||{};H.bonus=H.bonus||{};H.dvotes=H.dvotes||{};H.dseq=H.dseq||[];H.dq=H.dq||0;H.dstep=H.dstep||0;if(H.phase==='duel'&&!H.dseq.length)H.phase='results'}else{H=newHost();}
   base=NS+'/'+H.code;
   S=pub();
   const seen=new Set();
@@ -468,7 +481,7 @@ document.addEventListener('click',e=>{
     case 'unpair':act('unpair',{id:b.dataset.id});break;
     case 'start':act('start');break;
     case 'plus':case 'force':case 'next':case 'skipq':case 'again':act(a);break;
-    case 'verd':act('verd',{v:b.dataset.v});break;
+    case 'verd':act('verd',{s:b.dataset.s,v:b.dataset.v});break;
     case 'sendguess':{const t=$('#gt');if(!t||!S.rv)return;send({t:'guess',i:S.rv.i,text:t.value,jk:jokerOn});jokerOn=false;guessSent=S.rv.i;render();break}
     case 'jk':{jokerOn=!jokerOn;b.classList.toggle('on',jokerOn);b.textContent=jokerOn?'🃏 Двойная ставка включена! (нажми, чтобы отменить)':'🃏 Двойная ставка: верно +2, нет −1 (1 раз за игру)';break}
     case 'vote':{if(S.du)send({t:'vote',i:S.du.i,c:b.dataset.c});break}
@@ -544,18 +557,34 @@ function homeView(){
 }
 
 /* ---------- общие куски ---------- */
+function sideHTML(x,big){
+  const t=big?'abig2':'hand big';
+  return `<div class="side">
+    ${x.jk?'<div class="center"><span class="jkb">🃏 ДВОЙНАЯ СТАВКА!</span></div>':''}
+    <div class="card pink"><div class="muted">Догадка — ${esc(x.gn)} про ${esc(x.an)}:</div><div class="${t}">${esc(x.guess)||'—'}</div></div>
+    ${x.ans!=null?`<div class="card mint"><div class="muted">Настоящий ответ — ${esc(x.an)}:</div><div class="${t}">${esc(x.ans)||'—'}</div></div>`:''}
+    ${x.v?`<div class="center" style="margin:6px"><span class="stamp sm ${x.v}">${STAMP[x.v]}</span><div class="hand big">${x.pts>0?'+':''}${fmtP(x.pts||0)}</div></div>`:''}
+  </div>`;
+}
 function revealHTML(rv,big){
-  const cls=big?'qbig':'q';
+  const [A,B]=rv.s;
   let h=`<div class="pair-h">${esc(rv.pn)} <span class="muted" style="font-size:.7em">· ${rv.i+1}/${rv.total}</span></div>
-   <div class="card peach"><div class="qn">Вопрос ${rv.q+1}</div><div class="${cls}">${esc(rv.qt)}</div>
-   <div class="muted">Отвечает про себя: <b>${esc(rv.an)}</b></div></div>`;
-  if(rv.step===0)h+=`<div class="card center big"><b>${esc(rv.gn)}</b>, что ответит ${esc(rv.an)}? Пишет догадку<span class="dots"><span>.</span><span>.</span><span>.</span></span><div class="timer">${timerH()}</div></div>`;
-  if(rv.step>=1&&rv.jk)h+=`<div class="center" style="margin:6px 0"><span class="jkb">🃏 ДВОЙНАЯ СТАВКА!</span></div>`;
-  if(rv.step>=1)h+=`<div class="card pink"><div class="muted">Догадка — ${esc(rv.gn)}:</div><div class="${big?'abig':'hand big'}">${esc(rv.guess)||'—'}</div></div>`;
-  if(rv.step>=2)h+=`<div class="card mint"><div class="muted">Настоящий ответ — ${esc(rv.an)}:</div><div class="${big?'abig':'hand big'}">${esc(rv.ans)||'—'}</div></div>`;
-  if(rv.step===2)h+=`<div class="center muted">Ведущий оценивает<span class="dots"><span>.</span><span>.</span><span>.</span></span></div>`;
-  if(rv.step===3)h+=`<div class="center" style="margin:10px"><span class="stamp ${rv.verdict||'no'}">${STAMP[rv.verdict||'no']}</span><div class="hand big" style="margin-top:8px">${rv.pts>0?'+':''}${fmtP(rv.pts||0)} ${rv.pts===1||rv.pts===-1?'балл':'балла'}</div></div>`;
+   <div class="card peach"><div class="qn">Вопрос ${rv.q+1}</div><div class="${big?'qbig':'q'}">${esc(rv.qt)}</div></div>`;
+  if(rv.step===0)h+=`<div class="card center big"><b>${esc(A.an)}</b> и <b>${esc(B.an)}</b> угадывают друг друга<span class="dots"><span>.</span><span>.</span><span>.</span></span>
+    <div class="timer">${timerH()}</div>
+    <div><span class="chip ${rv.sent&&rv.sent[0]?'ok':''}">${esc(A.an)} ${rv.sent&&rv.sent[0]?'✓':'…'}</span><span class="chip ${rv.sent&&rv.sent[1]?'ok':''}">${esc(B.an)} ${rv.sent&&rv.sent[1]?'✓':'…'}</span></div></div>`;
+  else{
+    h+=`<div class="duo">${sideHTML(A,big)}${sideHTML(B,big)}</div>`;
+    if(rv.step===2&&rv.s.some(x=>!x.v))h+=`<div class="center muted">Ведущий оценивает<span class="dots"><span>.</span><span>.</span><span>.</span></span></div>`;
+  }
   return h;
+}
+function verdRows(rv){
+  return rv.s.map((x,k)=>{const key=k?'b':'a';
+    return x.v?`<div class="muted">${esc(x.gn)} про ${esc(x.an)}: <b>${STAMP[x.v]}</b></div>`
+    :`<div style="margin-top:6px"><b>${esc(x.gn)}</b> про ${esc(x.an)}:</div><div class="verd">
+      <button class="btn mint" data-a="verd" data-s="${key}" data-v="yes">Верно</button><button class="btn" data-a="verd" data-s="${key}" data-v="almost">Почти</button><button class="btn red" data-a="verd" data-s="${key}" data-v="no">Нет</button></div>`;
+  }).join('');
 }
 function admHTML(){
   const st=S,ph=st.phase;let h='';
@@ -576,8 +605,7 @@ function admHTML(){
   }else if(ph==='reveal'){
     const rv=st.rv;
     h+=`<button class="btn sm" data-a="next">Дальше ▶</button><button class="btn sm white" data-a="skipq">Пропустить вопрос</button>${rv.step===0?'<button class="btn sm white" data-a="plus">+15 сек</button>':''}`;
-    if(rv.step===2)h+=`<div class="hr"></div><div class="muted">Оцени догадку:</div><div class="verd">
-      <button class="btn mint" data-a="verd" data-v="yes">Верно</button><button class="btn" data-a="verd" data-v="almost">Почти</button><button class="btn red" data-a="verd" data-v="no">Нет</button></div>`;
+    if(rv.step===2)h+=`<div class="hr"></div><div class="muted">Оцени догадки:</div>`+verdRows(rv);
   }else if(ph==='duel'){
     h+=`<button class="btn sm" data-a="next">Дальше ▶</button>`;
   }else if(ph==='results'){
@@ -619,7 +647,7 @@ function screenView(){
   }
   if(ph==='reveal'){
     const rv=st.rv;
-    return {key:'R'+st.v,html:`<div class="screen">${logoH}<div style="max-width:1100px;margin:0 auto">${revealHTML(rv,true)}</div></div>`};
+    return {key:'R'+st.v,html:`<div class="screen">${logoH}<div style="max-width:1300px;margin:0 auto">${revealHTML(rv,true)}</div></div>`};
   }
   if(ph==='duel'){
     const du=st.du,voters=st.order.filter(id=>id!==du.ta&&id!==du.tb);
@@ -692,17 +720,18 @@ function playView(){
   if(ph==='reveal'){
     const rv=st.rv;
     if(jokerFor!==rv.i){jokerOn=false;jokerFor=rv.i}
-    if(rv.step===0&&rv.gu===ME.pid){
-      if(guessSent===rv.i)return {key:'gs'+rv.i,html:wrap('<div class="card mint center"><h2>Отправлено ✓</h2><div class="muted">Смотри на большой экран</div></div>')};
-      return {key:'g'+rv.i,focus:'#gt',html:wrap(`<div class="card pink center"><div class="muted">Что ответит ${esc(rv.an)}?</div><div class="timer">${timerH()}</div></div>
+    const myIdx=rv.ids.indexOf(ME.pid);
+    if(rv.step===0&&myIdx>=0){
+      const other=rv.s[myIdx?0:1].an;
+      if(me.d||guessSent===rv.i)return {key:'gs'+rv.i,html:wrap('<div class="card mint center"><h2>Отправлено ✓</h2><div class="muted">Ждём партнёра, смотри на большой экран</div></div>')};
+      return {key:'g'+rv.i,focus:'#gt',html:wrap(`<div class="card pink center"><div class="muted">Что ответит ${esc(other)}?</div><div class="timer">${timerH()}</div></div>
         <div class="card peach"><div class="qn">Вопрос ${rv.q+1}</div><div class="q">${esc(rv.qt)}</div></div>
-        <textarea id="gt" maxlength="300" placeholder="Твоя догадка про ${esc(rv.an)}…"></textarea>
-        ${pr&&!pr.jk?`<button class="btn white ${jokerOn?'on':''}" id="jk" data-a="jk">${jokerOn?'🃏 Двойная ставка включена! (нажми, чтобы отменить)':'🃏 Двойная ставка: верно +2, нет −1 (1 раз за игру)'}</button>`:''}
+        <textarea id="gt" maxlength="300" placeholder="Твоя догадка про ${esc(other)}…"></textarea>
+        ${!me.jk?`<button class="btn white ${jokerOn?'on':''}" id="jk" data-a="jk">${jokerOn?'🃏 Двойная ставка включена! (нажми, чтобы отменить)':'🃏 Двойная ставка: верно +2, нет −1 (1 раз за игру)'}</button>`:''}
         <button class="btn" data-a="sendguess">Отправить ✓</button>`)};
     }
-    const judge=me.adm&&rv.step===2&&!rv.verdict;
-    return {key:'r'+st.v,html:wrap(revealHTML(rv,false)+(judge?`<div class="card mus"><b>Оцени догадку:</b><div class="verd">
-      <button class="btn mint" data-a="verd" data-v="yes">Верно</button><button class="btn" data-a="verd" data-v="almost">Почти</button><button class="btn red" data-a="verd" data-v="no">Нет</button></div></div>`:''))};
+    const judge=me.adm&&rv.step===2&&rv.s.some(x=>!x.v);
+    return {key:'r'+st.v,html:wrap(revealHTML(rv,false)+(judge?`<div class="card mus"><b>Оцени догадки:</b>${verdRows(rv)}</div>`:''))};
   }
   if(ph==='duel'){
     const du=st.du,target=ME.pid===du.ta||ME.pid===du.tb;
@@ -769,7 +798,8 @@ function hostFx(){
   if(key===lastFx)return;
   lastFx=key;if(!key)return;
   if(key==='res'){confetti(220);setTimeout(()=>confetti(160),1600);setTimeout(()=>confetti(160),3400)}
-  else if(key[0]==='v'){const v=S.rv.verdict;if(v==='yes')confetti(S.rv.jk?260:110);else if(v==='almost')confetti(45);else shake()}
+  else if(key[0]==='v'){const vs=S.rv.s,yes=vs.filter(x=>x.v==='yes').length;
+    if(vs.some(x=>x.v==='yes'&&x.jk))confetti(260);else if(yes)confetti(yes*70);else if(vs.some(x=>x.v==='almost'))confetti(45);else shake()}
   else if(S.du.res&&(S.du.res.win==='a'||S.du.res.win==='b'))confetti(70);
 }
 const ribEls={},ribPts={};
@@ -786,7 +816,7 @@ function renderRibbon(){
     el.querySelector('.rn').textContent=s.n;
     el.querySelector('.rp').textContent=fmtP(s.pts);
     const pr=S.pairs.find(p=>p.id===s.id);
-    el.querySelector('.rj').textContent=pr&&!pr.jk?'🃏':'';
+    el.querySelector('.rj').textContent=pr?'🃏'.repeat((S.players[pr.a]&&!S.players[pr.a].jk?1:0)+(S.players[pr.b]&&!S.players[pr.b].jk?1:0)):'';
     const old=ribPts[s.id];
     if(old!=null&&s.pts!==old){
       const d=s.pts-old;el.querySelector('.rd').textContent=(d>0?'+':'−')+fmtP(Math.abs(d));

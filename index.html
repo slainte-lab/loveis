@@ -103,13 +103,19 @@ label{display:block;margin:10px 0 4px}
 .btn.on{background:var(--mus);box-shadow:0 0 0 4px #fff,0 0 0 7px var(--red),3px 3px 0 var(--ink)}
 .jkb{display:inline-block;background:var(--mus);border:3px solid var(--ink);border-radius:999px;padding:4px 18px;font-family:'Marck Script';font-size:28px;transform:rotate(-2deg);animation:pop .4s}
 .duelq{font-family:'Marck Script';font-size:48px;text-align:center;line-height:1.2;margin:16px 0}
-.dres{font-size:22px}
+.vs{display:flex;align-items:flex-end;justify-content:center;gap:30px;margin:10px 0}
+.vsx{font-family:'Marck Script';font-size:48px;align-self:center;color:var(--red)}
+.vsc{position:relative;min-width:260px;text-align:center;border:4px solid var(--ink);border-radius:20px;background:#fff;padding:18px 20px 12px;font-family:'Marck Script';font-size:44px;box-shadow:5px 5px 0 var(--ink)}
+.vsc.win{background:var(--mus);transform:scale(1.08)}
+.vbar{height:160px;border:3px solid var(--ink);border-radius:12px;background:#fff;margin:10px auto 6px;width:60px;display:flex;align-items:flex-end;overflow:hidden}
+.vbar i{display:block;width:100%;background:var(--pink);transition:height 1s ease;min-height:2px}
+.vn{font-family:'Pangolin';font-size:28px}
 .screen{padding-bottom:130px}
 </style>
 </head>
 <body>
 <div class="dot" id="dot"></div>
-<div style="position:fixed;left:8px;bottom:4px;font-size:11px;opacity:.4;z-index:9">v9 · связь: <span id="ver">…</span></div>
+<div style="position:fixed;left:8px;bottom:4px;font-size:11px;opacity:.4;z-index:9">v10 · связь: <span id="ver">…</span></div>
 <div id="main"></div>
 <div id="adm"></div>
 <div id="rx"></div>
@@ -127,7 +133,7 @@ const QS=[
  'В какую страну ты полетишь завтра, если билет бесплатный?'
 ];
 const ANSWER_SEC=300, GUESS_ITEM_SEC=45, DUEL_SEC=20;
-const BONUS_QS=['Кто чаще опаздывает?','Кто лучше готовит?','Кто первым мирится после ссоры?','Кто больше любит тратить деньги?','Кто громче храпит?'];
+const BONUS_QS=['Кто чаще опаздывает?','Кто лучше готовит?','Кто первым мирится после ссоры?','Кто больше любит тратить деньги?','Кто громче храпит?','Кто романтичнее?','Кто лучше водит машину?','Кто дольше собирается?','Кто чаще говорит «я же говорил(а)»?','Кто громче смеётся?'];
 const REACTS=['❤️','😂','👏','😱','🔥','😍'];
 const BROKERS=['wss://broker.emqx.io:8084/mqtt','wss://broker.hivemq.com:8884/mqtt','wss://test.mosquitto.org:8081/mqtt'];
 const NS='loveis-pg1';
@@ -196,7 +202,7 @@ const pubRet=(t,o)=>pubAll(t,o,{qos:1,retain:true});
 let H=null, S=null, T=null;
 function newHost(){
   return {code:genCode(),pin:String(1000+rnd(9000)),phase:'lobby',v:0,players:{},order:[],pairs:[],A:{},G:{},
-          deadline:0,seq:[],verd:[],rvi:0,step:0,res:null,qs:QS,jki:[],bonus:{},dq:0,dstep:0,dvotes:{},dres:null};
+          deadline:0,seq:[],verd:[],rvi:0,step:0,res:null,qs:QS,jki:[],bonus:{},dseq:[],dq:0,dstep:0,dvotes:{},dres:null};
 }
 function pairOfH(pid){return H.pairs.find(p=>p.a===pid||p.b===pid)}
 function partnerH(pid){const p=pairOfH(pid);return p&&(p.a===pid?p.b:p.a)}
@@ -216,7 +222,10 @@ function pub(){
   const sc=scoresH();
   const st={v:H.v,code:H.code,phase:H.phase,now:Date.now(),deadline:H.deadline,players:pl,order:H.order,pairs:H.pairs,qs:H.qs,
     sc:H.pairs.map(p=>({id:p.id,n:p.n,pts:sc[p.id]})).sort((a,b)=>b.pts-a.pts)};
-  if(H.phase==='duel')st.du={i:H.dq,total:BONUS_QS.length,q:BONUS_QS[H.dq],step:H.dstep,res:H.dstep===1?H.dres:null};
+  if(H.phase==='duel'){
+    const it=H.dseq[H.dq],pr=H.pairs.find(p=>p.id===it.pr);
+    st.du={i:H.dq,total:H.dseq.length,q:it.q,step:H.dstep,pn:pr.n,ta:pr.a,tb:pr.b,an:H.players[pr.a].n,bn:H.players[pr.b].n,res:H.dstep===1?H.dres:null};
+  }
   if(H.phase==='reveal'){
     const it=H.seq[H.rvi],pr=H.pairs.find(p=>p.id===it.pr);
     st.rv={i:H.rvi,total:H.seq.length,step:H.step,au:it.au,gu:it.gu,q:it.q,qt:H.qs[it.q],pn:pr.n,
@@ -250,7 +259,11 @@ function setPhase(p){
         H.seq.push({pr:pr.id,au:pr.b,gu:pr.a,q});
       }
   }
-  if(p==='duel'){H.dq=0;H.dstep=0;H.dvotes={};H.dres=null;H.deadline=Date.now()+DUEL_SEC*1000}
+  if(p==='duel'){
+    const qs=shuffle(BONUS_QS.slice());
+    H.dseq=shuffle(H.pairs.slice()).map((pr,i)=>({pr:pr.id,q:qs[i%qs.length]}));
+    H.dq=0;duelInit();
+  }
   if(p==='results')H.res=calcRes();
   commit();
   if(p==='reveal')revSched();
@@ -260,7 +273,7 @@ function calcRes(){
   const sc=scoresH(),gp={},ap={};
   H.order.forEach(id=>{gp[id]=0;ap[id]=0});
   H.verd.forEach((v,i)=>{const it=H.seq[i];if(!it||!v)return;gp[it.gu]+=ptsOf(i,v);ap[it.au]+=PTS[v]});
-  const max=H.qs.length*2+BONUS_QS.length+1;
+  const max=H.qs.length*2+1;
   const board=H.pairs.map(p=>({id:p.id,n:p.n,pts:sc[p.id],max,pct:max?sc[p.id]/max:0})).sort((a,b)=>b.pts-a.pts);
   const pick=(o,dir)=>{const ids=H.order.slice().sort((x,y)=>dir*(o[y]-o[x]));return ids.length?{n:H.players[ids[0]].n,v:o[ids[0]]}:null};
   const noms=[
@@ -280,39 +293,36 @@ function revSched(){
 }
 function revStep(s){H.step=s;commit();revSched()}
 function revNext(){
-  if(H.rvi+1>=H.seq.length)return setPhase(BONUS_QS.length?'duel':'results');
+  if(H.rvi+1>=H.seq.length)return setPhase(BONUS_QS.length&&H.pairs.length>1?'duel':'results');
   H.rvi++;H.step=0;H.deadline=Date.now()+GUESS_ITEM_SEC*1000;commit();revSched();
 }
 function setVerdict(v){
   if(H.phase!=='reveal'||H.step!==2||H.verd[H.rvi]||!(v in PTS))return;
   H.verd[H.rvi]=v;H.step=3;commit();revSched();
 }
-/* --- бонус-раунд «Кто сильнее?» --- */
+/* --- бонус-раунд «Кто сильнее?»: остальные пары голосуют про одну пару, без очков --- */
+function duelInit(){
+  const pr=H.pairs.find(p=>p.id===H.dseq[H.dq].pr);
+  H.dstep=0;H.dvotes={};H.dres=null;H.deadline=Date.now()+DUEL_SEC*1000;
+  for(const id of H.order)H.players[id].d=(id===pr.a||id===pr.b);
+}
 function duelSched(){
   clearT();
   if(H.phase!=='duel')return;
   if(H.dstep===0)T=setTimeout(duelResult,Math.max(1000,H.deadline-Date.now()));
-  else T=setTimeout(duelNext,7000);
+  else T=setTimeout(duelNext,8000);
 }
 function duelResult(){
   if(H.phase!=='duel'||H.dstep!==0)return;
-  const res=[];
-  for(const pr of H.pairs){
-    const a=H.dvotes[pr.a],b=H.dvotes[pr.b];let ok=false,who='';
-    if(a==='me'&&b==='partner'){ok=true;who=H.players[pr.a].n}
-    else if(a==='partner'&&b==='me'){ok=true;who=H.players[pr.b].n}
-    if(ok)H.bonus[pr.id]=(H.bonus[pr.id]||0)+1;
-    res.push({n:pr.n,an:H.players[pr.a].n,bn:H.players[pr.b].n,ac:a||null,bc:b||null,ok,who,
-      kind:ok?'ok':a&&b?(a==='me'?'both-me':'both-partner'):'miss'});
-  }
-  H.dres=res;H.dstep=1;commit();duelSched();
+  let ca=0,cb=0;
+  for(const v of Object.values(H.dvotes)){if(v==='a')ca++;else if(v==='b')cb++}
+  H.dres={ca,cb,tot:ca+cb,win:ca>cb?'a':cb>ca?'b':ca?'tie':'none'};
+  H.dstep=1;commit();duelSched();
 }
 function duelNext(){
   if(H.phase!=='duel')return;
-  if(H.dq+1>=BONUS_QS.length)return setPhase('results');
-  H.dq++;H.dstep=0;H.dvotes={};H.dres=null;H.deadline=Date.now()+DUEL_SEC*1000;
-  for(const id of H.order)H.players[id].d=false;
-  commit();duelSched();
+  if(H.dq+1>=H.dseq.length)return setPhase('results');
+  H.dq++;duelInit();commit();duelSched();
 }
 function checkAdvance(){
   if(H.phase!=='answer')return;
@@ -344,7 +354,7 @@ function hostIn(m){
         revStep(1)}
       break}
     case 'vote':
-      if(p&&H.phase==='duel'&&H.dstep===0&&m.i===H.dq&&(m.c==='me'||m.c==='partner')){
+      if(p&&H.phase==='duel'&&H.dstep===0&&m.i===H.dq&&(m.c==='a'||m.c==='b')&&!p.d){
         H.dvotes[id]=m.c;p.d=true;commit();
         if(H.order.every(x=>H.players[x].d))duelResult()}
       break;
@@ -386,7 +396,7 @@ function hostAdm(m){
 }
 function startHost(resume){
   isHost=true;
-  if(resume){H=JSON.parse(LS.get('host'));if(H.phase==='guess'){H.phase='answer';H.deadline=0}H.jki=H.jki||[];H.bonus=H.bonus||{};H.dvotes=H.dvotes||{};H.dq=H.dq||0;H.dstep=H.dstep||0}else{H=newHost();}
+  if(resume){H=JSON.parse(LS.get('host'));if(H.phase==='guess'){H.phase='answer';H.deadline=0}H.jki=H.jki||[];H.bonus=H.bonus||{};H.dvotes=H.dvotes||{};H.dseq=H.dseq||[];H.dq=H.dq||0;H.dstep=H.dstep||0;if(H.phase==='duel'&&!H.dseq.length)H.phase='results'}else{H=newHost();}
   base=NS+'/'+H.code;
   S=pub();
   const seen=new Set();
@@ -610,18 +620,28 @@ function screenView(){
     return {key:'R'+st.v,html:`<div class="screen">${logoH}<div style="max-width:1100px;margin:0 auto">${revealHTML(rv,true)}</div></div>`};
   }
   if(ph==='duel'){
-    const du=st.du;let body='';
+    const du=st.du,voters=st.order.filter(id=>id!==du.ta&&id!==du.tb);
+    const head=`<h2 class="center" style="font-size:34px">⚔️ Кто сильнее? · ${du.i+1}/${du.total}</h2>
+      <div class="center" style="margin-top:6px"><span class="chip adm" style="font-size:30px">${esc(du.pn)}</span></div>
+      <div class="duelq">${esc(du.q)}</div>`;
+    let body;
     if(du.step===0){
-      const n=st.order.filter(id=>st.players[id].d).length;
-      body=`<div class="timer" style="font-size:80px">${timerH()}</div><div class="center big">Ответили: ${n} из ${st.order.length}</div>
-       <div class="pgrid" style="margin-top:16px">${st.pairs.map(p=>`<div class="card"><div class="pair-h">${esc(p.n)}</div>${[p.a,p.b].map(id=>`<div class="chip ${st.players[id].d?'ok':''}"><span>${pn(id)}</span><span>${st.players[id].d?'✓':'…'}</span></div>`).join('')}</div>`).join('')}</div>`;
+      const n=voters.filter(id=>st.players[id].d).length;
+      body=`<div class="vs"><div class="vsc">${esc(du.an)}</div><div class="vsx">VS</div><div class="vsc">${esc(du.bn)}</div></div>
+       <div class="timer" style="font-size:72px">${timerH()}</div>
+       <div class="center big">Голосуют остальные: ${n} из ${voters.length}</div>
+       <div class="center" style="margin-top:10px">${voters.map(id=>`<span class="chip ${st.players[id].d?'ok':''}">${pn(id)} ${st.players[id].d?'✓':'…'}</span>`).join('')}</div>`;
     }else{
-      body=`<div class="pgrid" style="margin-top:16px">${(du.res||[]).map(r=>`<div class="card ${r.ok?'mint':'pink'}"><div class="pair-h">${esc(r.n)}</div>
-        <div class="dres">${esc(r.an)}: <b>${r.ac?(r.ac==='me'?'Я':esc(r.bn)):'—'}</b></div>
-        <div class="dres">${esc(r.bn)}: <b>${r.bc?(r.bc==='me'?'Я':esc(r.an)):'—'}</b></div>
-        <div class="big" style="margin-top:8px">${r.ok?'✅ Оба сошлись: '+esc(r.who)+'! +1':r.kind==='both-me'?'😄 Каждый считает себя':r.kind==='both-partner'?'😇 Оба скромничают':'⏳ Не успели'}</div></div>`).join('')}</div>`;
+      const r=du.res,pa=r.tot?Math.round(r.ca/r.tot*100):0,pb=r.tot?100-pa:0;
+      const msg=r.win==='a'?`Друзья считают: <b>${esc(du.an)}</b> 👑`:r.win==='b'?`Друзья считают: <b>${esc(du.bn)}</b> 👑`:r.win==='tie'?'Мнения разделились поровну! 🤝':'Никто не проголосовал 🤷';
+      body=`<div class="vs">
+         <div class="vsc ${r.win==='a'?'win':''}">${esc(du.an)}<div class="vbar"><i style="height:${pa}%"></i></div><div class="vn">${r.ca} <span class="muted">· ${pa}%</span></div></div>
+         <div class="vsx">VS</div>
+         <div class="vsc ${r.win==='b'?'win':''}">${esc(du.bn)}<div class="vbar"><i style="height:${pb}%"></i></div><div class="vn">${r.cb} <span class="muted">· ${pb}%</span></div></div></div>
+       <div class="center hand" style="font-size:44px;margin-top:10px">${msg}</div>
+       <div class="center muted" style="margin-top:6px">Вот так вас видят друзья 😉</div>`;
     }
-    return {key:'D'+st.v,html:`<div class="screen">${logoH}<h2 class="center" style="font-size:38px">⚔️ Кто сильнее? · ${du.i+1}/${du.total}</h2><div class="duelq">${esc(du.q)}</div>${body}</div>`};
+    return {key:'D'+st.v,html:`<div class="screen">${logoH}${head}${body}</div>`};
   }
   if(ph==='results'){
     const r=st.res,top=r.board.slice(0,3),cls=['p1','p2','p3'],ico=['🥇','🥈','🥉'];
@@ -682,12 +702,14 @@ function playView(){
       <button class="btn mint" data-a="verd" data-v="yes">Верно</button><button class="btn" data-a="verd" data-v="almost">Почти</button><button class="btn red" data-a="verd" data-v="no">Нет</button></div></div>`:''))};
   }
   if(ph==='duel'){
-    const du=st.du;
-    if(!me.d&&du.step===0)return {key:'dv'+du.i,html:wrap(`<div class="card pink center"><h2>⚔️ Кто сильнее?</h2><div class="timer">${timerH()}</div></div>
+    const du=st.du,target=ME.pid===du.ta||ME.pid===du.tb;
+    if(target)return {key:'dt'+du.i+du.step,html:wrap(`<div class="card mus center"><h2>Это про вас! 😏</h2><div class="duelq" style="font-size:30px;margin:6px 0">${esc(du.q)}</div>
+      <div class="muted">Остальные сейчас голосуют: кто из вас. Смотри на большой экран!</div></div>`)};
+    if(!me.d&&du.step===0)return {key:'dv'+du.i,html:wrap(`<div class="card pink center"><h2>⚔️ Кто сильнее?</h2><div class="muted">Про пару «${esc(du.pn)}»</div><div class="timer">${timerH()}</div></div>
       <div class="card peach center"><div class="duelq" style="font-size:34px;margin:4px 0">${esc(du.q)}</div></div>
-      <button class="btn mint" data-a="vote" data-c="me">Я 🙋</button>
-      <button class="btn pink" data-a="vote" data-c="partner">${esc(partner?partner.n:'Партнёр')} 👉</button>`)};
-    return {key:'dw'+du.i+du.step+me.d,html:wrap('<div class="card mint center"><h2>Ответ принят ✓</h2><div class="muted">Смотри на большой экран</div></div>')};
+      <button class="btn mint" data-a="vote" data-c="a">${esc(du.an)}</button>
+      <button class="btn pink" data-a="vote" data-c="b">${esc(du.bn)}</button>`)};
+    return {key:'dw'+du.i+du.step+me.d,html:wrap('<div class="card mint center"><h2>'+(du.step===0?'Голос принят ✓':'Смотри на экран')+'</h2><div class="muted">Результат на большом экране</div></div>')};
   }
   if(ph==='results'){
     const r=st.res,i=r.board.findIndex(b=>pr&&b.id===pr.id),b=r.board[i];
@@ -745,12 +767,12 @@ function hostFx(){
   lastFx=key;if(!key)return;
   if(key==='res'){confetti(220);setTimeout(()=>confetti(160),1600);setTimeout(()=>confetti(160),3400)}
   else if(key[0]==='v'){const v=S.rv.verdict;if(v==='yes')confetti(S.rv.jk?260:110);else if(v==='almost')confetti(45);else shake()}
-  else if(S.du.res&&S.du.res.some(r=>r.ok))confetti(70);
+  else if(S.du.res&&(S.du.res.win==='a'||S.du.res.win==='b'))confetti(70);
 }
 const ribEls={},ribPts={};
 function renderRibbon(){
   const box=$('#rib');
-  if(!isHost||!S||!['reveal','duel'].includes(S.phase)){box.style.display='none';return}
+  if(!isHost||!S||S.phase!=='reveal'){box.style.display='none';return}
   box.style.display='flex';
   (S.sc||[]).forEach((s,rank)=>{
     let el=ribEls[s.id];

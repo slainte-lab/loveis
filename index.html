@@ -81,13 +81,41 @@ label{display:block;margin:10px 0 4px}
 .ovl{position:fixed;right:14px;bottom:68px;width:420px;max-width:calc(100vw - 28px);max-height:75vh;overflow:auto;z-index:20}
 .heart{color:var(--red)}
 @media(max-width:800px){.screen{padding:14px}.lob,.stage{grid-template-columns:1fr}.podium{height:300px}.pod{width:30%}}
+#fx{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:40}
+.em{position:absolute;bottom:-60px;font-size:56px;text-align:center;animation:floaty 4s ease-out forwards}
+.em small{display:block;font-size:15px;font-family:'Pangolin'}
+@keyframes floaty{0%{transform:translateY(0) scale(.6);opacity:0}10%{opacity:1;transform:translateY(-8vh) scale(1)}100%{transform:translateY(-95vh) translateX(var(--dx)) scale(1.2);opacity:0}}
+#cf{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:45}
+#rib{position:fixed;left:0;right:0;bottom:0;display:none;gap:12px;padding:10px 20px;background:var(--card);border-top:4px solid var(--ink);z-index:30;justify-content:center;flex-wrap:wrap}
+.rchip{position:relative;display:flex;align-items:center;gap:8px;border:3px solid var(--ink);border-radius:999px;padding:4px 16px;background:#fff;font-size:24px}
+.rchip .rp{font-size:28px;color:var(--red)}
+.rchip .rd{position:absolute;right:-6px;top:-24px;font-family:'Marck Script';font-size:32px;opacity:0}
+.rchip.bump{background:var(--mint);animation:bumpa .8s}
+.rchip.down{background:#f7a3ad;animation:bumpa .8s}
+.rchip.bump .rd,.rchip.down .rd{animation:rdel 1.6s forwards}
+@keyframes bumpa{0%{transform:scale(1)}30%{transform:scale(1.25)}100%{transform:scale(1)}}
+@keyframes rdel{0%{opacity:0;transform:translateY(8px)}20%{opacity:1}100%{opacity:0;transform:translateY(-24px)}}
+#rx{position:fixed;left:0;right:0;bottom:0;display:none;gap:6px;justify-content:center;padding:8px 8px calc(8px + env(safe-area-inset-bottom));background:rgba(255,243,226,.96);border-top:3px solid var(--ink);z-index:30}
+#rx button{font-size:30px;border:3px solid var(--ink);border-radius:14px;background:#fff;padding:2px 10px;touch-action:manipulation}
+#rx button:active{transform:scale(.85);background:var(--pink)}
+.shake{animation:shk .5s}
+@keyframes shk{0%,100%{transform:none}20%{transform:translateX(-14px)}40%{transform:translateX(12px)}60%{transform:translateX(-8px)}80%{transform:translateX(6px)}}
+.btn.on{background:var(--mus);box-shadow:0 0 0 4px #fff,0 0 0 7px var(--red),3px 3px 0 var(--ink)}
+.jkb{display:inline-block;background:var(--mus);border:3px solid var(--ink);border-radius:999px;padding:4px 18px;font-family:'Marck Script';font-size:28px;transform:rotate(-2deg);animation:pop .4s}
+.duelq{font-family:'Marck Script';font-size:48px;text-align:center;line-height:1.2;margin:16px 0}
+.dres{font-size:22px}
+.screen{padding-bottom:130px}
 </style>
 </head>
 <body>
 <div class="dot" id="dot"></div>
-<div style="position:fixed;left:8px;bottom:4px;font-size:11px;opacity:.4;z-index:9">v8 · связь: <span id="ver">…</span></div>
+<div style="position:fixed;left:8px;bottom:4px;font-size:11px;opacity:.4;z-index:9">v9 · связь: <span id="ver">…</span></div>
 <div id="main"></div>
 <div id="adm"></div>
+<div id="rx"></div>
+<div id="rib"></div>
+<div id="fx"></div>
+<canvas id="cf"></canvas>
 <script>
 'use strict';
 /* ====================== НАСТРОЙКИ ====================== */
@@ -98,7 +126,9 @@ const QS=[
  'Кем бы ты работал, если бы деньги не были проблемой?',
  'В какую страну ты полетишь завтра, если билет бесплатный?'
 ];
-const ANSWER_SEC=300, GUESS_ITEM_SEC=45;
+const ANSWER_SEC=300, GUESS_ITEM_SEC=45, DUEL_SEC=20;
+const BONUS_QS=['Кто чаще опаздывает?','Кто лучше готовит?','Кто первым мирится после ссоры?','Кто больше любит тратить деньги?','Кто громче храпит?'];
+const REACTS=['❤️','😂','👏','😱','🔥','😍'];
 const BROKERS=['wss://broker.emqx.io:8084/mqtt','wss://broker.hivemq.com:8884/mqtt','wss://test.mosquitto.org:8081/mqtt'];
 const NS='loveis-pg1';
 const FIREBASE_URL=(new URLSearchParams(location.search).get('fb')||'https://slainte-33638-default-rtdb.europe-west1.firebasedatabase.app').replace(/\/$/,'');   // https://<проект>-default-rtdb.<регион>.firebasedatabase.app
@@ -166,27 +196,36 @@ const pubRet=(t,o)=>pubAll(t,o,{qos:1,retain:true});
 let H=null, S=null, T=null;
 function newHost(){
   return {code:genCode(),pin:String(1000+rnd(9000)),phase:'lobby',v:0,players:{},order:[],pairs:[],A:{},G:{},
-          deadline:0,seq:[],verd:[],rvi:0,step:0,res:null,qs:QS};
+          deadline:0,seq:[],verd:[],rvi:0,step:0,res:null,qs:QS,jki:[],bonus:{},dq:0,dstep:0,dvotes:{},dres:null};
 }
 function pairOfH(pid){return H.pairs.find(p=>p.a===pid||p.b===pid)}
 function partnerH(pid){const p=pairOfH(pid);return p&&(p.a===pid?p.b:p.a)}
+function ptsOf(i,v){
+  if(!v)return 0;
+  if(H.jki[i])return v==='yes'?2:v==='almost'?1:-1;
+  return PTS[v];
+}
 function scoresH(){
-  const sc={};H.pairs.forEach(p=>sc[p.id]=0);
-  H.verd.forEach((v,i)=>{if(v&&H.seq[i])sc[H.seq[i].pr]+=PTS[v]});
+  const sc={};H.pairs.forEach(p=>sc[p.id]=H.bonus[p.id]||0);
+  H.verd.forEach((v,i)=>{if(v&&H.seq[i])sc[H.seq[i].pr]+=ptsOf(i,v)});
   return sc;
 }
 function pub(){
   const pl={};
   for(const id of H.order){const p=H.players[id];pl[id]={n:p.n,d:!!p.d,adm:!!p.adm}}
-  const st={v:H.v,code:H.code,phase:H.phase,now:Date.now(),deadline:H.deadline,players:pl,order:H.order,pairs:H.pairs,qs:H.qs};
+  const sc=scoresH();
+  const st={v:H.v,code:H.code,phase:H.phase,now:Date.now(),deadline:H.deadline,players:pl,order:H.order,pairs:H.pairs,qs:H.qs,
+    sc:H.pairs.map(p=>({id:p.id,n:p.n,pts:sc[p.id]})).sort((a,b)=>b.pts-a.pts)};
+  if(H.phase==='duel')st.du={i:H.dq,total:BONUS_QS.length,q:BONUS_QS[H.dq],step:H.dstep,res:H.dstep===1?H.dres:null};
   if(H.phase==='reveal'){
-    const it=H.seq[H.rvi],pr=H.pairs.find(p=>p.id===it.pr),sc=scoresH();
+    const it=H.seq[H.rvi],pr=H.pairs.find(p=>p.id===it.pr);
     st.rv={i:H.rvi,total:H.seq.length,step:H.step,au:it.au,gu:it.gu,q:it.q,qt:H.qs[it.q],pn:pr.n,
       an:H.players[it.au].n,gn:H.players[it.gu].n,
       guess:H.step>=1?(H.G[it.gu]||[])[it.q]||'':null,
       ans:H.step>=2?(H.A[it.au]||[])[it.q]||'':null,
       verdict:H.verd[H.rvi]||null,
-      sc:H.pairs.map(p=>({n:p.n,pts:sc[p.id]})).sort((a,b)=>b.pts-a.pts)};
+      jk:H.step>=1?!!H.jki[H.rvi]:false,
+      pts:H.verd[H.rvi]?ptsOf(H.rvi,H.verd[H.rvi]):null};
   }
   if(H.phase==='results')st.res=H.res;
   return st;
@@ -204,22 +243,24 @@ function setPhase(p){
     for(const id of H.order)if(!H.A[id])H.A[id]=H.qs.map(()=>'');
   }
   if(p==='reveal'){
-    H.seq=[];H.verd=[];H.G={};H.rvi=0;H.step=0;H.deadline=Date.now()+GUESS_ITEM_SEC*1000;
+    H.seq=[];H.verd=[];H.G={};H.jki=[];H.bonus={};H.pairs.forEach(p=>{p.jk=false});H.rvi=0;H.step=0;H.deadline=Date.now()+GUESS_ITEM_SEC*1000;
     for(const pr of shuffle(H.pairs.slice()))
       for(let q=0;q<H.qs.length;q++){
         H.seq.push({pr:pr.id,au:pr.a,gu:pr.b,q});
         H.seq.push({pr:pr.id,au:pr.b,gu:pr.a,q});
       }
   }
+  if(p==='duel'){H.dq=0;H.dstep=0;H.dvotes={};H.dres=null;H.deadline=Date.now()+DUEL_SEC*1000}
   if(p==='results')H.res=calcRes();
   commit();
   if(p==='reveal')revSched();
+  if(p==='duel')duelSched();
 }
 function calcRes(){
   const sc=scoresH(),gp={},ap={};
   H.order.forEach(id=>{gp[id]=0;ap[id]=0});
-  H.verd.forEach((v,i)=>{const it=H.seq[i];if(!it||!v)return;gp[it.gu]+=PTS[v];ap[it.au]+=PTS[v]});
-  const max=H.qs.length*2;
+  H.verd.forEach((v,i)=>{const it=H.seq[i];if(!it||!v)return;gp[it.gu]+=ptsOf(i,v);ap[it.au]+=PTS[v]});
+  const max=H.qs.length*2+BONUS_QS.length+1;
   const board=H.pairs.map(p=>({id:p.id,n:p.n,pts:sc[p.id],max,pct:max?sc[p.id]/max:0})).sort((a,b)=>b.pts-a.pts);
   const pick=(o,dir)=>{const ids=H.order.slice().sort((x,y)=>dir*(o[y]-o[x]));return ids.length?{n:H.players[ids[0]].n,v:o[ids[0]]}:null};
   const noms=[
@@ -239,12 +280,39 @@ function revSched(){
 }
 function revStep(s){H.step=s;commit();revSched()}
 function revNext(){
-  if(H.rvi+1>=H.seq.length)return setPhase('results');
+  if(H.rvi+1>=H.seq.length)return setPhase(BONUS_QS.length?'duel':'results');
   H.rvi++;H.step=0;H.deadline=Date.now()+GUESS_ITEM_SEC*1000;commit();revSched();
 }
 function setVerdict(v){
   if(H.phase!=='reveal'||H.step!==2||H.verd[H.rvi]||!(v in PTS))return;
   H.verd[H.rvi]=v;H.step=3;commit();revSched();
+}
+/* --- бонус-раунд «Кто сильнее?» --- */
+function duelSched(){
+  clearT();
+  if(H.phase!=='duel')return;
+  if(H.dstep===0)T=setTimeout(duelResult,Math.max(1000,H.deadline-Date.now()));
+  else T=setTimeout(duelNext,7000);
+}
+function duelResult(){
+  if(H.phase!=='duel'||H.dstep!==0)return;
+  const res=[];
+  for(const pr of H.pairs){
+    const a=H.dvotes[pr.a],b=H.dvotes[pr.b];let ok=false,who='';
+    if(a==='me'&&b==='partner'){ok=true;who=H.players[pr.a].n}
+    else if(a==='partner'&&b==='me'){ok=true;who=H.players[pr.b].n}
+    if(ok)H.bonus[pr.id]=(H.bonus[pr.id]||0)+1;
+    res.push({n:pr.n,an:H.players[pr.a].n,bn:H.players[pr.b].n,ac:a||null,bc:b||null,ok,who,
+      kind:ok?'ok':a&&b?(a==='me'?'both-me':'both-partner'):'miss'});
+  }
+  H.dres=res;H.dstep=1;commit();duelSched();
+}
+function duelNext(){
+  if(H.phase!=='duel')return;
+  if(H.dq+1>=BONUS_QS.length)return setPhase('results');
+  H.dq++;H.dstep=0;H.dvotes={};H.dres=null;H.deadline=Date.now()+DUEL_SEC*1000;
+  for(const id of H.order)H.players[id].d=false;
+  commit();duelSched();
 }
 function checkAdvance(){
   if(H.phase!=='answer')return;
@@ -271,7 +339,18 @@ function hostIn(m){
     case 'guess':{
       const it=H.seq[H.rvi];
       if(p&&H.phase==='reveal'&&H.step===0&&m.i===H.rvi&&it.gu===id){
-        (H.G[id]=H.G[id]||[])[it.q]=String(m.text||'').slice(0,300);revStep(1)}
+        (H.G[id]=H.G[id]||[])[it.q]=String(m.text||'').slice(0,300);
+        const pr=pairOfH(id);if(m.jk&&pr&&!pr.jk){pr.jk=true;H.jki[H.rvi]=true}
+        revStep(1)}
+      break}
+    case 'vote':
+      if(p&&H.phase==='duel'&&H.dstep===0&&m.i===H.dq&&(m.c==='me'||m.c==='partner')){
+        H.dvotes[id]=m.c;p.d=true;commit();
+        if(H.order.every(x=>H.players[x].d))duelResult()}
+      break;
+    case 'react':{
+      const now=Date.now();
+      if(p&&REACTS.includes(m.e)&&now-(p.lr||0)>200){p.lr=now;fxEmoji(m.e,p.n)}
       break}
     case 'adm':
       if(p&&p.adm&&m.pin===H.pin)hostAdm(m);break;
@@ -296,17 +375,18 @@ function hostAdm(m){
       break;
     case 'force':if(H.phase==='answer')setPhase('reveal');break;
     case 'next':
+      if(H.phase==='duel'){if(H.dstep===0)duelResult();else duelNext();break}
       if(H.phase!=='reveal')break;
       if(H.step<2)revStep(H.step+1);else if(H.step===3)revNext();break;
     case 'skipq':if(H.phase==='reveal')revNext();break;
     case 'verd':setVerdict(m.v);break;
     case 'again':
-      if(H.phase==='results'){H.A={};H.G={};H.verd=[];H.seq=[];H.res=null;setPhase('lobby')}break;
+      if(H.phase==='results'){H.A={};H.G={};H.verd=[];H.seq=[];H.res=null;H.jki=[];H.bonus={};H.pairs.forEach(p=>{p.jk=false});setPhase('lobby')}break;
   }
 }
 function startHost(resume){
   isHost=true;
-  if(resume){H=JSON.parse(LS.get('host'));if(H.phase==='guess'){H.phase='answer';H.deadline=0}}else{H=newHost();}
+  if(resume){H=JSON.parse(LS.get('host'));if(H.phase==='guess'){H.phase='answer';H.deadline=0}H.jki=H.jki||[];H.bonus=H.bonus||{};H.dvotes=H.dvotes||{};H.dq=H.dq||0;H.dstep=H.dstep||0}else{H=newHost();}
   base=NS+'/'+H.code;
   S=pub();
   const seen=new Set();
@@ -317,6 +397,7 @@ function startHost(resume){
   if(FIREBASE_URL)fetch(FIREBASE_URL+'/'+base+'/up.json',{method:'DELETE'}).catch(()=>{}).finally(connectAll);else connectAll();
   commit();
   if(H.phase==='reveal')revSched();
+  if(H.phase==='duel')duelSched();
   setInterval(()=>{
     checkAdvance();
     S=pub();
@@ -355,7 +436,7 @@ function startPlay(code){
 }
 
 /* ====================== ДЕЙСТВИЯ ====================== */
-let sel=[],admOpen=null,guessSent=-1;
+let sel=[],admOpen=null,guessSent=-1,jokerOn=false,jokerFor=-1,lastReact=0;
 function act(op,x){
   x=x||{};
   if(isHost)hostAdm(Object.assign({op},x));
@@ -377,7 +458,10 @@ document.addEventListener('click',e=>{
     case 'start':act('start');break;
     case 'plus':case 'force':case 'next':case 'skipq':case 'again':act(a);break;
     case 'verd':act('verd',{v:b.dataset.v});break;
-    case 'sendguess':{const t=$('#gt');if(!t||!S.rv)return;send({t:'guess',i:S.rv.i,text:t.value});guessSent=S.rv.i;render();break}
+    case 'sendguess':{const t=$('#gt');if(!t||!S.rv)return;send({t:'guess',i:S.rv.i,text:t.value,jk:jokerOn});jokerOn=false;guessSent=S.rv.i;render();break}
+    case 'jk':{jokerOn=!jokerOn;b.classList.toggle('on',jokerOn);b.textContent=jokerOn?'🃏 Двойная ставка включена! (нажми, чтобы отменить)':'🃏 Двойная ставка: верно +2, нет −1 (1 раз за игру)';break}
+    case 'vote':{if(S.du)send({t:'vote',i:S.du.i,c:b.dataset.c});break}
+    case 'react':{const n=Date.now();if(n-lastReact<300)return;lastReact=n;send({t:'react',e:b.dataset.e});break}
     case 'admtoggle':admOpen=!(admOpen===null?(S&&S.phase==='lobby'):admOpen);render();break;
     case 'gear':admOpen=!admOpen;render();break;
     case 'done':sendDone(true);break;
@@ -435,7 +519,7 @@ function render(){
     if(v.bind)v.bind();
     if(v.focus){const el=$(v.focus);el&&el.focus()}
   }
-  renderAdm();tickTimers();
+  renderAdm();renderRx();renderRibbon();hostFx();tickTimers();
 }
 function homeView(){
   const saved=LS.get('host');let savedCode='';try{savedCode=JSON.parse(saved).code}catch{}
@@ -455,10 +539,11 @@ function revealHTML(rv,big){
    <div class="card peach"><div class="qn">Вопрос ${rv.q+1}</div><div class="${cls}">${esc(rv.qt)}</div>
    <div class="muted">Отвечает про себя: <b>${esc(rv.an)}</b></div></div>`;
   if(rv.step===0)h+=`<div class="card center big"><b>${esc(rv.gn)}</b>, что ответит ${esc(rv.an)}? Пишет догадку<span class="dots"><span>.</span><span>.</span><span>.</span></span><div class="timer">${timerH()}</div></div>`;
+  if(rv.step>=1&&rv.jk)h+=`<div class="center" style="margin:6px 0"><span class="jkb">🃏 ДВОЙНАЯ СТАВКА!</span></div>`;
   if(rv.step>=1)h+=`<div class="card pink"><div class="muted">Догадка — ${esc(rv.gn)}:</div><div class="${big?'abig':'hand big'}">${esc(rv.guess)||'—'}</div></div>`;
   if(rv.step>=2)h+=`<div class="card mint"><div class="muted">Настоящий ответ — ${esc(rv.an)}:</div><div class="${big?'abig':'hand big'}">${esc(rv.ans)||'—'}</div></div>`;
   if(rv.step===2)h+=`<div class="center muted">Ведущий оценивает<span class="dots"><span>.</span><span>.</span><span>.</span></span></div>`;
-  if(rv.step===3)h+=`<div class="center" style="margin:10px"><span class="stamp ${rv.verdict||'no'}">${STAMP[rv.verdict||'no']}</span></div>`;
+  if(rv.step===3)h+=`<div class="center" style="margin:10px"><span class="stamp ${rv.verdict||'no'}">${STAMP[rv.verdict||'no']}</span><div class="hand big" style="margin-top:8px">${rv.pts>0?'+':''}${fmtP(rv.pts||0)} ${rv.pts===1||rv.pts===-1?'балл':'балла'}</div></div>`;
   return h;
 }
 function admHTML(){
@@ -481,6 +566,8 @@ function admHTML(){
     h+=`<button class="btn sm" data-a="next">Дальше ▶</button><button class="btn sm white" data-a="skipq">Пропустить вопрос</button>${rv.step===0?'<button class="btn sm white" data-a="plus">+15 сек</button>':''}`;
     if(rv.step===2)h+=`<div class="hr"></div><div class="muted">Оцени догадку:</div><div class="verd">
       <button class="btn mint" data-a="verd" data-v="yes">Верно</button><button class="btn" data-a="verd" data-v="almost">Почти</button><button class="btn red" data-a="verd" data-v="no">Нет</button></div>`;
+  }else if(ph==='duel'){
+    h+=`<button class="btn sm" data-a="next">Дальше ▶</button>`;
   }else if(ph==='results'){
     h+=`<button class="btn" data-a="again">Играть снова</button>`;
   }
@@ -519,9 +606,22 @@ function screenView(){
       ${[p.a,p.b].map(id=>`<div class="chip ${st.players[id].d?'ok':''}"><span>${pn(id)}</span><span>${st.players[id].d?'✓':'…'}</span></div>`).join('')}</div>`).join('')}</div></div>`};
   }
   if(ph==='reveal'){
-    const rv=st.rv,mx=Math.max(1,...rv.sc.map(s=>s.pts),1);
-    return {key:'R'+st.v,html:`<div class="screen">${logoH}<div class="stage"><div>${revealHTML(rv,true)}</div>
-     <div class="card sb"><h3 style="font-size:30px">Счёт</h3>${rv.sc.map(s=>`<div class="row2"><span>${esc(s.n)}</span><b>${fmtP(s.pts)}</b></div><div class="bar"><i style="width:${s.pts/mx*100}%"></i></div>`).join('')}</div></div></div>`};
+    const rv=st.rv;
+    return {key:'R'+st.v,html:`<div class="screen">${logoH}<div style="max-width:1100px;margin:0 auto">${revealHTML(rv,true)}</div></div>`};
+  }
+  if(ph==='duel'){
+    const du=st.du;let body='';
+    if(du.step===0){
+      const n=st.order.filter(id=>st.players[id].d).length;
+      body=`<div class="timer" style="font-size:80px">${timerH()}</div><div class="center big">Ответили: ${n} из ${st.order.length}</div>
+       <div class="pgrid" style="margin-top:16px">${st.pairs.map(p=>`<div class="card"><div class="pair-h">${esc(p.n)}</div>${[p.a,p.b].map(id=>`<div class="chip ${st.players[id].d?'ok':''}"><span>${pn(id)}</span><span>${st.players[id].d?'✓':'…'}</span></div>`).join('')}</div>`).join('')}</div>`;
+    }else{
+      body=`<div class="pgrid" style="margin-top:16px">${(du.res||[]).map(r=>`<div class="card ${r.ok?'mint':'pink'}"><div class="pair-h">${esc(r.n)}</div>
+        <div class="dres">${esc(r.an)}: <b>${r.ac?(r.ac==='me'?'Я':esc(r.bn)):'—'}</b></div>
+        <div class="dres">${esc(r.bn)}: <b>${r.bc?(r.bc==='me'?'Я':esc(r.an)):'—'}</b></div>
+        <div class="big" style="margin-top:8px">${r.ok?'✅ Оба сошлись: '+esc(r.who)+'! +1':r.kind==='both-me'?'😄 Каждый считает себя':r.kind==='both-partner'?'😇 Оба скромничают':'⏳ Не успели'}</div></div>`).join('')}</div>`;
+    }
+    return {key:'D'+st.v,html:`<div class="screen">${logoH}<h2 class="center" style="font-size:38px">⚔️ Кто сильнее? · ${du.i+1}/${du.total}</h2><div class="duelq">${esc(du.q)}</div>${body}</div>`};
   }
   if(ph==='results'){
     const r=st.res,top=r.board.slice(0,3),cls=['p1','p2','p3'],ico=['🥇','🥈','🥉'];
@@ -568,22 +668,107 @@ function playView(){
   }
   if(ph==='reveal'){
     const rv=st.rv;
+    if(jokerFor!==rv.i){jokerOn=false;jokerFor=rv.i}
     if(rv.step===0&&rv.gu===ME.pid){
       if(guessSent===rv.i)return {key:'gs'+rv.i,html:wrap('<div class="card mint center"><h2>Отправлено ✓</h2><div class="muted">Смотри на большой экран</div></div>')};
       return {key:'g'+rv.i,focus:'#gt',html:wrap(`<div class="card pink center"><div class="muted">Что ответит ${esc(rv.an)}?</div><div class="timer">${timerH()}</div></div>
         <div class="card peach"><div class="qn">Вопрос ${rv.q+1}</div><div class="q">${esc(rv.qt)}</div></div>
         <textarea id="gt" maxlength="300" placeholder="Твоя догадка про ${esc(rv.an)}…"></textarea>
+        ${pr&&!pr.jk?`<button class="btn white ${jokerOn?'on':''}" id="jk" data-a="jk">${jokerOn?'🃏 Двойная ставка включена! (нажми, чтобы отменить)':'🃏 Двойная ставка: верно +2, нет −1 (1 раз за игру)'}</button>`:''}
         <button class="btn" data-a="sendguess">Отправить ✓</button>`)};
     }
     const judge=me.adm&&rv.step===2&&!rv.verdict;
     return {key:'r'+st.v,html:wrap(revealHTML(rv,false)+(judge?`<div class="card mus"><b>Оцени догадку:</b><div class="verd">
       <button class="btn mint" data-a="verd" data-v="yes">Верно</button><button class="btn" data-a="verd" data-v="almost">Почти</button><button class="btn red" data-a="verd" data-v="no">Нет</button></div></div>`:''))};
   }
+  if(ph==='duel'){
+    const du=st.du;
+    if(!me.d&&du.step===0)return {key:'dv'+du.i,html:wrap(`<div class="card pink center"><h2>⚔️ Кто сильнее?</h2><div class="timer">${timerH()}</div></div>
+      <div class="card peach center"><div class="duelq" style="font-size:34px;margin:4px 0">${esc(du.q)}</div></div>
+      <button class="btn mint" data-a="vote" data-c="me">Я 🙋</button>
+      <button class="btn pink" data-a="vote" data-c="partner">${esc(partner?partner.n:'Партнёр')} 👉</button>`)};
+    return {key:'dw'+du.i+du.step+me.d,html:wrap('<div class="card mint center"><h2>Ответ принят ✓</h2><div class="muted">Смотри на большой экран</div></div>')};
+  }
   if(ph==='results'){
     const r=st.res,i=r.board.findIndex(b=>pr&&b.id===pr.id),b=r.board[i];
     return {key:'x'+st.v,html:wrap(b?`<div class="card mus center"><h2>${i+1} место</h2><div class="big"><b>${esc(b.n)}</b><br>${fmtP(b.pts)} из ${b.max}</div></div>
       <div class="card pink center"><div class="loveis">${loveCap(b.pct)}</div></div>`:'<div class="card center">Спасибо за игру!</div>')};
   }
+}
+
+/* ====================== ЭФФЕКТЫ ====================== */
+let rxOn=false;
+function renderRx(){
+  const on=!isHost&&S&&S.players&&S.players[ME.pid]&&['reveal','duel','results'].includes(S.phase);
+  if(on===rxOn)return;
+  rxOn=on;const b=$('#rx');
+  b.style.display=on?'flex':'none';
+  b.innerHTML=on?REACTS.map(e=>`<button data-a="react" data-e="${e}">${e}</button>`).join(''):'';
+}
+function fxEmoji(e,name){
+  const layer=$('#fx');if(layer.children.length>60)return;
+  const el=document.createElement('div');el.className='em';
+  el.style.left=(5+Math.random()*85)+'%';el.style.setProperty('--dx',(Math.random()*160-80)+'px');
+  el.innerHTML=e+'<small>'+esc(name)+'</small>';
+  layer.appendChild(el);setTimeout(()=>el.remove(),4200);
+}
+const cf={ps:[],raf:0};
+function confetti(n){
+  const c=$('#cf'),W=c.width=innerWidth,Hh=c.height=innerHeight,ctx=c.getContext('2d');
+  const cols=['#e0475b','#f3c34b','#f9c6c9','#c9ecd9','#ffd9b8','#2e9e6a'];
+  for(let i=0;i<n;i++){
+    const side=i%2;
+    cf.ps.push({x:side?W:0,y:Hh*.9,vx:(side?-1:1)*(4+Math.random()*9),vy:-(9+Math.random()*13),
+      r:Math.random()*6,vr:(Math.random()-.5)*.4,w:8+Math.random()*8,h:5+Math.random()*7,c:cols[rnd(cols.length)]});
+  }
+  if(cf.raf)return;
+  const step=()=>{
+    ctx.clearRect(0,0,W,Hh);
+    cf.ps=cf.ps.filter(p=>p.y<Hh+30);
+    for(const p of cf.ps){
+      p.vy+=.35;p.vx*=.992;p.x+=p.vx;p.y+=p.vy;p.r+=p.vr;
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.r);ctx.fillStyle=p.c;ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h);ctx.restore();
+    }
+    if(cf.ps.length)cf.raf=requestAnimationFrame(step);else{cf.raf=0;ctx.clearRect(0,0,W,Hh)}
+  };
+  cf.raf=requestAnimationFrame(step);
+}
+function shake(){const m=$('#main');m.classList.add('shake');setTimeout(()=>m.classList.remove('shake'),600)}
+let lastFx='';
+function hostFx(){
+  if(!isHost||!S)return;
+  let key='';
+  if(S.phase==='reveal'&&S.rv&&S.rv.step===3)key='v'+S.rv.i;
+  else if(S.phase==='duel'&&S.du&&S.du.step===1)key='d'+S.du.i;
+  else if(S.phase==='results')key='res';
+  if(key===lastFx)return;
+  lastFx=key;if(!key)return;
+  if(key==='res'){confetti(220);setTimeout(()=>confetti(160),1600);setTimeout(()=>confetti(160),3400)}
+  else if(key[0]==='v'){const v=S.rv.verdict;if(v==='yes')confetti(S.rv.jk?260:110);else if(v==='almost')confetti(45);else shake()}
+  else if(S.du.res&&S.du.res.some(r=>r.ok))confetti(70);
+}
+const ribEls={},ribPts={};
+function renderRibbon(){
+  const box=$('#rib');
+  if(!isHost||!S||!['reveal','duel'].includes(S.phase)){box.style.display='none';return}
+  box.style.display='flex';
+  (S.sc||[]).forEach((s,rank)=>{
+    let el=ribEls[s.id];
+    if(!el){el=ribEls[s.id]=document.createElement('div');el.className='rchip';
+      el.innerHTML='<span class="cr"></span><span class="rn"></span><b class="rp"></b><span class="rj"></span><span class="rd"></span>';box.appendChild(el)}
+    el.style.order=rank;
+    el.querySelector('.cr').textContent=rank===0&&s.pts>0?'👑':'';
+    el.querySelector('.rn').textContent=s.n;
+    el.querySelector('.rp').textContent=fmtP(s.pts);
+    const pr=S.pairs.find(p=>p.id===s.id);
+    el.querySelector('.rj').textContent=pr&&!pr.jk?'🃏':'';
+    const old=ribPts[s.id];
+    if(old!=null&&s.pts!==old){
+      const d=s.pts-old;el.querySelector('.rd').textContent=(d>0?'+':'−')+fmtP(Math.abs(d));
+      el.classList.remove('bump','down');void el.offsetWidth;el.classList.add(d>0?'bump':'down');
+    }
+    ribPts[s.id]=s.pts;
+  });
 }
 
 /* ====================== СТАРТ ====================== */

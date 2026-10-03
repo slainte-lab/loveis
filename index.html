@@ -595,8 +595,8 @@ function bdayBannerH(st,big){
   if(!st.bd)return '';
   const n=esc(st.bd.n);
   return `<div class="card mus center" style="border-width:4px"><div style="font-size:${big?64:42}px">🎂🏆🎉</div>
-    <h2 style="font-size:${big?56:36}px">Сегодня выиграла ${n}!</h2>
-    <div class="hand" style="font-size:${big?36:26}px;line-height:1.3;margin-top:8px">${n}, с днём рождения! ${heart}<br>Ты обыграла всех: и в этой игре, и в жизни. Пусть удача всегда будет на твоей стороне, любовь — в каждом ответе, а все желания угадываются с первого раза! 🥳</div></div>`;
+    <h2 style="font-size:${big?52:32}px;line-height:1.2">Но все мы знаем, что сегодня победила наша любимая, обожаемая ${n}!</h2>
+    <div class="hand" style="font-size:${big?36:26}px;line-height:1.3;margin-top:8px">${n}, с днём рождения! ${heart}<br>Какие бы очки ни показывал экран, ты выиграла главное: наши сердца. Пусть в жизни всё складывается так, как ты загадаешь: с первой попытки, без подсказок и с двойной ставкой! 🥳</div></div>`;
 }
 function admHTML(){
   const st=S,ph=st.phase;let h='';
@@ -690,10 +690,9 @@ function screenView(){
     const r=st.res,top=r.board.slice(0,3),cls=['p1','p2','p3'],ico=['🥇','🥈','🥉'];
     const order=top.length>=3?[1,0,2]:top.map((_,i)=>i);
     return {key:'F'+st.v,html:`<div class="screen">${logoH}<h2 class="center" style="font-size:42px">Итоги вечера</h2>
-     ${bdayBannerH(st,true)}
      <div class="podium">${order.map(i=>`<div class="pod ${cls[i]}"><div class="pl">${ico[i]}</div><div class="pn">${esc(top[i].n)}</div><div style="font-size:34px">${fmtP(top[i].pts)} <span class="muted" style="font-size:20px">из ${top[i].max}</span></div></div>`).join('')}</div>
      <div class="noms">${r.noms.filter(x=>x.w).map(x=>`<div class="card mus"><div style="font-size:40px">${x.i}</div><h3 style="font-size:30px">${x.t}</h3><div class="muted">${x.d}</div><div class="big"><b>${esc(x.w.n)}</b> — ${fmtP(x.w.v)} ${x.u}</div></div>`).join('')}</div>
-     <div class="noms" style="margin-top:20px">${r.board.map((b,i)=>`<div class="card pink"><div class="loveis">${loveCap(b.pct)}</div><div class="big"><b>${i+1}. ${esc(b.n)}</b> · ${fmtP(b.pts)}/${b.max}</div></div>`).join('')}</div></div>`};
+     <div class="noms" style="margin-top:20px">${r.board.map((b,i)=>`<div class="card pink"><div class="loveis">${loveCap(b.pct)}</div><div class="big"><b>${i+1}. ${esc(b.n)}</b> · ${fmtP(b.pts)}/${b.max}</div></div>`).join('')}</div>${bdayBannerH(st,true)}</div>`};
   }
 }
 function loveCap(p){
@@ -759,8 +758,8 @@ function playView(){
   }
   if(ph==='results'){
     const r=st.res,i=r.board.findIndex(b=>pr&&b.id===pr.id),b=r.board[i];
-    return {key:'x'+st.v,html:wrap(bdayBannerH(st,false)+(b?`<div class="card mus center"><h2>${i+1} место</h2><div class="big"><b>${esc(b.n)}</b><br>${fmtP(b.pts)} из ${b.max}</div></div>
-      <div class="card pink center"><div class="loveis">${loveCap(b.pct)}</div></div>`:'<div class="card center">Спасибо за игру!</div>'))};
+    return {key:'x'+st.v,html:wrap((b?`<div class="card mus center"><h2>${i+1} место</h2><div class="big"><b>${esc(b.n)}</b><br>${fmtP(b.pts)} из ${b.max}</div></div>
+      <div class="card pink center"><div class="loveis">${loveCap(b.pct)}</div></div>`:'<div class="card center">Спасибо за игру!</div>')+bdayBannerH(st,false))};
   }
 }
 

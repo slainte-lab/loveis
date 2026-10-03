@@ -85,6 +85,7 @@ label{display:block;margin:10px 0 4px}
 </head>
 <body>
 <div class="dot" id="dot"></div>
+<div style="position:fixed;left:8px;bottom:4px;font-size:11px;opacity:.4;z-index:9">v3 · связь: <span id="ver">…</span></div>
 <div id="main"></div>
 <div id="adm"></div>
 <script>
@@ -133,7 +134,7 @@ function connectAll(){
   });
 }
 const anyOk=()=>links.some(l=>l.ok);
-function setDot(){$('#dot').classList.toggle('on',anyOk())}
+function setDot(){$('#dot').classList.toggle('on',anyOk());$('#ver').textContent=links.filter(l=>l.ok).length+'/'+links.length}
 function pubAll(t,o,opt){const m=JSON.stringify(o);links.forEach(l=>l.ok&&l.c.publish(base+'/'+t,m,opt))}
 const pubRet=(t,o)=>pubAll(t,o,{qos:1,retain:true});
 

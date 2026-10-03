@@ -120,7 +120,7 @@ label{display:block;margin:10px 0 4px}
 </head>
 <body>
 <div class="dot" id="dot"></div>
-<div style="position:fixed;left:8px;bottom:4px;font-size:11px;opacity:.4;z-index:9">v14 · связь: <span id="ver">…</span></div>
+<div style="position:fixed;left:8px;bottom:4px;font-size:11px;opacity:.4;z-index:9">v15 · связь: <span id="ver">…</span></div>
 <div id="main"></div>
 <div id="adm"></div>
 <div id="rx"></div>
@@ -207,7 +207,7 @@ const pubRet=(t,o)=>pubAll(t,o,{qos:1,retain:true});
 let H=null, S=null, T=null;
 function newHost(){
   return {code:genCode(),pin:String(1000+rnd(9000)),phase:'lobby',v:0,players:{},order:[],pairs:[],A:{},G:{},
-          deadline:0,seq:[],verd:[],rvi:0,step:0,res:null,qs:QS,kicked:{},jki:[],jkUsed:{},bonus:{},dseq:[],dq:0,dstep:0,dvotes:{},dres:null};
+          deadline:0,seq:[],verd:[],rvi:0,step:0,res:null,qs:QS,kicked:{},jki:[],jkUsed:{},bonus:{},dseq:[],dq:0,dstep:0,dvotes:{},dres:null,bday:''};
 }
 function pairOfH(pid){return H.pairs.find(p=>p.a===pid||p.b===pid)}
 function partnerH(pid){const p=pairOfH(pid);return p&&(p.a===pid?p.b:p.a)}
@@ -225,7 +225,7 @@ function pub(){
   const pl={};
   for(const id of H.order){const p=H.players[id];pl[id]={n:p.n,d:!!p.d,adm:!!p.adm,jk:!!(H.jkUsed||{})[id]}}
   const sc=scoresH();
-  const st={v:H.v,code:H.code,phase:H.phase,now:Date.now(),deadline:H.deadline,players:pl,order:H.order,pairs:H.pairs,qs:H.qs,kicked:Object.keys(H.kicked||{}),
+  const st={v:H.v,code:H.code,phase:H.phase,now:Date.now(),deadline:H.deadline,players:pl,order:H.order,pairs:H.pairs,qs:H.qs,kicked:Object.keys(H.kicked||{}),bd:H.bday&&H.players[H.bday]?{id:H.bday,n:H.players[H.bday].n}:null,
     sc:H.pairs.map(p=>({id:p.id,n:p.n,pts:sc[p.id]})).sort((a,b)=>b.pts-a.pts)};
   if(H.phase==='duel'){
     const it=H.dseq[H.dq],pr=H.pairs.find(p=>p.id===it.pr);
@@ -387,10 +387,11 @@ function hostAdm(m){
       if(!L||m.a===m.b||!H.players[m.a]||!H.players[m.b]||pairOfH(m.a)||pairOfH(m.b))return;
       const n=cleanName(m.n&&m.n.trim()?m.n:H.players[m.a].n+' & '+H.players[m.b].n).slice(0,28);
       H.pairs.push({id:'p'+Date.now().toString(36)+rnd(99),n,a:m.a,b:m.b});commit();break}
+    case 'bday':if(!H.players[m.tp])return;H.bday=H.bday===m.tp?'':m.tp;commit();break;
     case 'unpair':if(!L)return;H.pairs=H.pairs.filter(p=>p.id!==m.id);commit();break;
     case 'kick':if(!L||!H.players[m.tp])return;
       H.pairs=H.pairs.filter(p=>p.a!==m.tp&&p.b!==m.tp);delete H.players[m.tp];
-      H.order=H.order.filter(x=>x!==m.tp);(H.kicked=H.kicked||{})[m.tp]=true;commit();break;
+      H.order=H.order.filter(x=>x!==m.tp);if(H.bday===m.tp)H.bday='';(H.kicked=H.kicked||{})[m.tp]=true;commit();break;
     case 'start':
       if(L&&H.pairs.length&&H.order.every(pairOfH))setPhase('answer');break;
     case 'plus':
@@ -478,6 +479,7 @@ document.addEventListener('click',e=>{
     case 'pair':{if(sel.length!==2)return;const n=prompt('Название пары (можно оставить пустым)','');if(n===null)return;
       act('pair',{a:sel[0],b:sel[1],n});sel=[];break}
     case 'kick1':{act('kick',{tp:b.dataset.pid});sel=sel.filter(x=>x!==b.dataset.pid);render();break}
+    case 'bday':act('bday',{tp:b.dataset.pid});break;
     case 'unpair':act('unpair',{id:b.dataset.id});break;
     case 'start':act('start');break;
     case 'plus':case 'force':case 'next':case 'skipq':case 'again':act(a);break;
@@ -586,6 +588,16 @@ function verdRows(rv){
       <button class="btn mint" data-a="verd" data-s="${key}" data-v="yes">Верно</button><button class="btn" data-a="verd" data-s="${key}" data-v="almost">Почти</button><button class="btn red" data-a="verd" data-s="${key}" data-v="no">Нет</button></div>`;
   }).join('');
 }
+function bdayAdmH(st){
+  return `<div class="hr"></div><b>🎂 Кто сегодня именинница (выиграет в итогах):</b><div>${st.order.map(id=>`<button class="chip ${st.bd&&st.bd.id===id?'sel':''}" data-a="bday" data-pid="${id}">${esc(st.players[id].n)}</button>`).join('')||'<span class="muted">никого</span>'}</div>`;
+}
+function bdayBannerH(st,big){
+  if(!st.bd)return '';
+  const n=esc(st.bd.n);
+  return `<div class="card mus center" style="border-width:4px"><div style="font-size:${big?64:42}px">🎂🏆🎉</div>
+    <h2 style="font-size:${big?56:36}px">Сегодня выиграла ${n}!</h2>
+    <div class="hand" style="font-size:${big?36:26}px;line-height:1.3;margin-top:8px">${n}, с днём рождения! ${heart}<br>Ты обыграла всех: и в этой игре, и в жизни. Пусть удача всегда будет на твоей стороне, любовь — в каждом ответе, а все желания угадываются с первого раза! 🥳</div></div>`;
+}
 function admHTML(){
   const st=S,ph=st.phase;let h='';
   if(isHost)h+=`<div class="muted">PIN админа для телефона: <b style="font-size:24px">${esc(H.pin)}</b></div><div class="hr"></div>`;
@@ -596,6 +608,7 @@ function admHTML(){
 `;
     h+=`<div class="hr"></div><b>Все игроки (✕ — удалить):</b><div>${st.order.map(id=>`<span class="chip">${esc(st.players[id].n)} <button data-a="kick1" data-pid="${id}" style="border:0;background:none;font-size:20px;padding:0 0 0 4px;cursor:pointer">✕</button></span>`).join('')||'<span class="muted">никого</span>'}</div>`;
     if(st.pairs.length)h+=`<div class="hr"></div><b>Пары:</b>`+st.pairs.map(p=>`<div>${esc(p.n)} <button class="chip" style="padding:0 10px" data-a="unpair" data-id="${p.id}">✕</button></div>`).join('');
+    h+=bdayAdmH(st);
     h+=`<button class="btn" data-a="start" ${canStart(st)?'':'disabled'}>Старт игры ▶</button>`;
     if(!canStart(st))h+=`<div class="muted">Старт появится, когда все игроки будут в парах.</div>`;
   }else if(ph==='answer'){
@@ -609,7 +622,7 @@ function admHTML(){
   }else if(ph==='duel'){
     h+=`<button class="btn sm" data-a="next">Дальше ▶</button>`;
   }else if(ph==='results'){
-    h+=`<button class="btn" data-a="again">Играть снова</button>`;
+    h+=bdayAdmH(st)+`<button class="btn" data-a="again">Играть снова</button>`;
   }
   return h;
 }
@@ -677,6 +690,7 @@ function screenView(){
     const r=st.res,top=r.board.slice(0,3),cls=['p1','p2','p3'],ico=['🥇','🥈','🥉'];
     const order=top.length>=3?[1,0,2]:top.map((_,i)=>i);
     return {key:'F'+st.v,html:`<div class="screen">${logoH}<h2 class="center" style="font-size:42px">Итоги вечера</h2>
+     ${bdayBannerH(st,true)}
      <div class="podium">${order.map(i=>`<div class="pod ${cls[i]}"><div class="pl">${ico[i]}</div><div class="pn">${esc(top[i].n)}</div><div style="font-size:34px">${fmtP(top[i].pts)} <span class="muted" style="font-size:20px">из ${top[i].max}</span></div></div>`).join('')}</div>
      <div class="noms">${r.noms.filter(x=>x.w).map(x=>`<div class="card mus"><div style="font-size:40px">${x.i}</div><h3 style="font-size:30px">${x.t}</h3><div class="muted">${x.d}</div><div class="big"><b>${esc(x.w.n)}</b> — ${fmtP(x.w.v)} ${x.u}</div></div>`).join('')}</div>
      <div class="noms" style="margin-top:20px">${r.board.map((b,i)=>`<div class="card pink"><div class="loveis">${loveCap(b.pct)}</div><div class="big"><b>${i+1}. ${esc(b.n)}</b> · ${fmtP(b.pts)}/${b.max}</div></div>`).join('')}</div></div>`};
@@ -745,8 +759,8 @@ function playView(){
   }
   if(ph==='results'){
     const r=st.res,i=r.board.findIndex(b=>pr&&b.id===pr.id),b=r.board[i];
-    return {key:'x'+st.v,html:wrap(b?`<div class="card mus center"><h2>${i+1} место</h2><div class="big"><b>${esc(b.n)}</b><br>${fmtP(b.pts)} из ${b.max}</div></div>
-      <div class="card pink center"><div class="loveis">${loveCap(b.pct)}</div></div>`:'<div class="card center">Спасибо за игру!</div>')};
+    return {key:'x'+st.v,html:wrap(bdayBannerH(st,false)+(b?`<div class="card mus center"><h2>${i+1} место</h2><div class="big"><b>${esc(b.n)}</b><br>${fmtP(b.pts)} из ${b.max}</div></div>
+      <div class="card pink center"><div class="loveis">${loveCap(b.pct)}</div></div>`:'<div class="card center">Спасибо за игру!</div>'))};
   }
 }
 
